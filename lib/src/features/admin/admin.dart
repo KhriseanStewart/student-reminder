@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:students_reminder/src/services/user_service.dart';
 
 // ✅ Widgets
 import 'package:students_reminder/src/widgets/summary_row.dart' as summary;
@@ -11,6 +10,12 @@ import 'package:students_reminder/src/widgets/full_map_screen.dart';
 import 'package:students_reminder/src/features/admin/search_results_screen.dart';
 import 'package:students_reminder/src/features/admin/user_detail_page.dart';
 
+// ✅ Models
+import 'package:students_reminder/src/models/app_user.dart';
+
+// ✅ Services
+import 'package:students_reminder/src/services/user_service.dart';
+
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
 
@@ -19,9 +24,10 @@ class AdminPage extends StatefulWidget {
 }
 
 class _AdminPageState extends State<AdminPage> {
-  DateTimeRange? _range;
+  DateTimeRange? _range; // 🔑 Selected date range
   bool _isAdmin = false;
   bool _loadedRole = false;
+  AppUser? _currentUser; // 🔑 logged-in admin
 
   @override
   void initState() {
@@ -29,6 +35,7 @@ class _AdminPageState extends State<AdminPage> {
     _loadRole();
   }
 
+  /// ✅ Load role from Firestore
   Future<void> _loadRole() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
@@ -43,13 +50,21 @@ class _AdminPageState extends State<AdminPage> {
         .collection('users')
         .doc(uid)
         .get();
-    final role = snap.data()?['role'] as String?;
+
+    if (!snap.exists) {
+      setState(() => _loadedRole = true);
+      return;
+    }
+
+    final appUser = AppUser.fromMap(uid, snap.data() ?? {});
     setState(() {
-      _isAdmin = role == 'admin';
+      _currentUser = appUser;
+      _isAdmin = appUser.isAdmin;
       _loadedRole = true;
     });
   }
 
+  /// ✅ Pick a date range and refresh stream
   Future<void> _pickRange() async {
     final now = DateTime.now();
     final initial =
@@ -67,10 +82,11 @@ class _AdminPageState extends State<AdminPage> {
     );
 
     if (picked != null) {
-      setState(() => _range = picked);
+      setState(() => _range = picked); // 🔄 triggers StreamBuilder refresh
     }
   }
 
+  /// ✅ Search students by name
   Future<void> _searchStudents(String query) async {
     if (query.isEmpty) return;
 
@@ -126,7 +142,8 @@ class _AdminPageState extends State<AdminPage> {
         ),
       );
     }
-    if (!_isAdmin) {
+
+    if (!_isAdmin || _currentUser == null) {
       return const Scaffold(
         backgroundColor: Colors.black,
         body: Center(
@@ -159,7 +176,11 @@ class _AdminPageState extends State<AdminPage> {
         ),
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: UserService.instance.adminDoc(),
+        // ✅ Updated: apply date range filter
+        stream: UserService.instance.adminDoc(
+          startDate: _range?.start,
+          endDate: _range?.end,
+        ),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -170,7 +191,7 @@ class _AdminPageState extends State<AdminPage> {
             return Center(
               child: Text(
                 'Error: ${snap.error}',
-                style: TextStyle(color: Colors.redAccent),
+                style: const TextStyle(color: Colors.redAccent),
               ),
             );
           }
@@ -185,9 +206,7 @@ class _AdminPageState extends State<AdminPage> {
             );
           }
 
-          // ✅ Get logged-in user for greeting
-          final user = FirebaseAuth.instance.currentUser;
-          final displayName = user?.displayName ?? "Admin";
+          final displayName = _currentUser?.displayName ?? "Admin";
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -205,7 +224,7 @@ class _AdminPageState extends State<AdminPage> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.deepPurple.withOpacity(0.4),
+                      color: Colors.deepPurple.withValues(alpha: 0.4),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -223,9 +242,14 @@ class _AdminPageState extends State<AdminPage> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
-                      "Here’s the attendance summary for today",
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    Text(
+                      _range == null
+                          ? "Here’s the attendance summary for today"
+                          : "Showing records from ${_range!.start.toLocal().toString().split(' ')[0]} → ${_range!.end.toLocal().toString().split(' ')[0]}",
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
@@ -245,7 +269,7 @@ class _AdminPageState extends State<AdminPage> {
 
               const SizedBox(height: 24),
 
-              // 👨‍🎓 Student list (flat list, no Present/Late/Absent sections)
+              // 👨‍🎓 Student list
               ...buildStudentList(docs),
             ],
           );
@@ -254,15 +278,16 @@ class _AdminPageState extends State<AdminPage> {
     );
   }
 
+  /// ✅ Student list builder
   List<Widget> buildStudentList(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) {
     return docs.map((doc) {
-      final data = doc.data() as Map<String, dynamic>;
+      final data = doc.data();
       final status = data['status'] ?? 'unknown';
       final userId = data['userId'];
 
-      return FutureBuilder<DocumentSnapshot>(
+      return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         future: FirebaseFirestore.instance
             .collection('users')
             .doc(userId)
@@ -277,13 +302,11 @@ class _AdminPageState extends State<AdminPage> {
             );
           }
 
-          final userData = userSnap.data!.data() as Map<String, dynamic>?;
-          final first = (userData?['firstName'] ?? '').toString().trim();
-          final last = (userData?['lastName'] ?? '').toString().trim();
-          final name = (first.isEmpty && last.isEmpty)
-              ? "Student"
-              : "$first $last";
-          final photoUrl = userData?['photoUrl'];
+          final userData = userSnap.data!.data();
+          if (userData == null) return const SizedBox();
+
+          // 🔹 Build AppUser model
+          final appUser = AppUser.fromMap(userId, userData);
 
           return AnimatedContainer(
             duration: const Duration(milliseconds: 300),
@@ -294,14 +317,17 @@ class _AdminPageState extends State<AdminPage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => UserDetailPage(userId: userId),
+                    builder: (_) => UserDetailPage.admin(
+                      student: appUser,
+                      currentUser: _currentUser!, // logged-in admin
+                    ),
                   ),
                 );
               },
               child: student.StudentRow(
-                name: name,
+                name: appUser.displayName,
                 status: status,
-                photoUrl: photoUrl,
+                photoUrl: appUser.photoUrl,
                 reason: data['lateReason'],
                 onPresent: () async =>
                     await _markStatus(doc.reference, "present"),
@@ -317,6 +343,7 @@ class _AdminPageState extends State<AdminPage> {
     }).toList();
   }
 
+  /// ✅ Update student status
   Future<void> _markStatus(DocumentReference docRef, String status) async {
     await docRef.update({
       'status': status,
@@ -330,6 +357,7 @@ class _AdminPageState extends State<AdminPage> {
     ).showSnackBar(SnackBar(content: Text('Marked $status')));
   }
 
+  /// ✅ Edit late reason
   Future<void> _editLateReason(
     DocumentReference docRef,
     String? current,

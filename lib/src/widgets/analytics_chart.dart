@@ -76,8 +76,9 @@ class AnalyticsCharts extends StatelessWidget {
                     showTitles: true,
                     getTitlesWidget: (value, meta) {
                       final idx = value.toInt();
-                      if (idx < 0 || idx >= series.length)
+                      if (idx < 0 || idx >= series.length) {
                         return const SizedBox();
+                      }
                       final day = DateFormat('E')
                           .format(
                             DateTime.now().subtract(Duration(days: 6 - idx)),

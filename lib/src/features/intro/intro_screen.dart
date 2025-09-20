@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+// Widgets
 import 'package:students_reminder/src/widgets/animated_intro_slide.dart';
 import 'package:students_reminder/src/widgets/animated_page_indicator.dart';
+
+// ✅ Route names
+import 'package:students_reminder/src/shared/routes.dart';
+
+// ✅ Session manager to remember intro seen
+import 'package:students_reminder/src/services/session_manager.dart';
 
 class IntroScreen extends StatefulWidget {
   const IntroScreen({super.key});
@@ -17,6 +24,7 @@ class _IntroScreenState extends State<IntroScreen> {
   double pageOffset = 0.0;
   bool swipeEnabled = true;
 
+  // 👋 Slides for intro
   final List<Map<String, String>> _slides = [
     {
       'image': 'assets/images/intro1.png',
@@ -35,19 +43,21 @@ class _IntroScreenState extends State<IntroScreen> {
     },
   ];
 
+  // 🎨 Background color transitions
   final List<Color> _backgroundColors = [
     Colors.blue.shade900,
     Colors.deepPurple.shade800,
     Colors.teal.shade800,
   ];
 
-  void _handleGetStarted() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      Navigator.pushReplacementNamed(context, '/home');
-    } else {
-      Navigator.pushReplacementNamed(context, '/login');
-    }
+  /// ✅ When user presses "Get Started"
+  Future<void> _handleGetStarted() async {
+    // Save that intro has been seen so we skip it next time
+    await SessionManager.setIntroSeen();
+    if (!mounted) return;
+
+    // Move to login screen
+    Navigator.pushReplacementNamed(context, AppRoutes.login);
   }
 
   @override
@@ -60,14 +70,11 @@ class _IntroScreenState extends State<IntroScreen> {
     });
   }
 
+  // 🔥 Interpolates between background colors as user swipes
   Color _getBackgroundColor(double offset) {
-    final int lowerIndex = offset.floor();
-    final int upperIndex = (lowerIndex + 1).clamp(
-      0,
-      _backgroundColors.length - 1,
-    );
-    final double t = offset - lowerIndex;
-
+    final lowerIndex = offset.floor();
+    final upperIndex = (lowerIndex + 1).clamp(0, _backgroundColors.length - 1);
+    final t = offset - lowerIndex;
     return Color.lerp(
       _backgroundColors[lowerIndex],
       _backgroundColors[upperIndex],
@@ -81,7 +88,7 @@ class _IntroScreenState extends State<IntroScreen> {
       backgroundColor: _getBackgroundColor(pageOffset),
       body: Column(
         children: [
-          // 📊 Top onboarding progress bar
+          // 📊 Top progress indicator
           Padding(
             padding: const EdgeInsets.only(top: 48, left: 16, right: 16),
             child: LinearProgressIndicator(
@@ -93,6 +100,7 @@ class _IntroScreenState extends State<IntroScreen> {
             ),
           ),
 
+          // 🖼️ Slides
           Expanded(
             child: AbsorbPointer(
               absorbing: !swipeEnabled,
@@ -104,8 +112,9 @@ class _IntroScreenState extends State<IntroScreen> {
                     currentIndex = index;
                     swipeEnabled = false;
                   });
+                  // Avoid too fast swipe
                   Future.delayed(const Duration(milliseconds: 800), () {
-                    setState(() => swipeEnabled = true);
+                    if (mounted) setState(() => swipeEnabled = true);
                   });
                 },
                 itemBuilder: (context, index) {
@@ -117,9 +126,8 @@ class _IntroScreenState extends State<IntroScreen> {
                     description: slide['description']!,
                     isCurrent: index == currentIndex,
                     isLast: index == _slides.length - 1,
-                    onGetStarted: _handleGetStarted,
+                    onGetStarted: _handleGetStarted, // ✅ goes to login
                     parallaxOffset: parallax,
-                    // Apply custom font via widget if passed through
                     titleStyle: GoogleFonts.poppins(
                       fontSize: 26,
                       color: Colors.white,
@@ -137,7 +145,7 @@ class _IntroScreenState extends State<IntroScreen> {
 
           const SizedBox(height: 16),
 
-          // 🎯 Custom animated page indicator
+          // 🔘 Animated dots
           AnimatedPageIndicator(
             count: _slides.length,
             currentIndex: currentIndex,

@@ -10,15 +10,16 @@ class UserService {
   final _db = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
 
+  /// 🔹 Watch a single user profile in real-time
   Stream<DocumentSnapshot<Map<String, dynamic>>> getUser(String uid) {
     return _db.collection('users').doc(uid).snapshots();
   }
 
-  //Return Filtered list of students >> web | mobile
+  /// 🔹 Return filtered list of students by course group
   Stream<QuerySnapshot<Map<String, dynamic>>> watchUserByCourseGroup(
     String course,
   ) {
-    //  course:  "web"  ||  "mobile"
+    // Example: course = "web" or "mobile"
     debugPrint('***>> doc value: ${_db.collection('users').snapshots()}');
     return _db
         .collection('users')
@@ -27,7 +28,7 @@ class UserService {
         .snapshots();
   }
 
-  //Update a User's info
+  /// 🔹 Update a user’s profile with optional fields
   Future<void> updateMyProfile(
     String uid, {
     String? gender,
@@ -38,14 +39,13 @@ class UserService {
     if (gender != null) data['gender'] = gender;
     if (phone != null) data['phone'] = phone;
     if (bio != null) data['bio'] = bio;
+
     if (data.isNotEmpty) {
-      await _db
-          .collection('users')
-          .doc(uid)
-          .set(data, SetOptions(merge: true));
+      await _db.collection('users').doc(uid).set(data, SetOptions(merge: true));
     }
   }
 
+  /// 🔹 Upload profile photo and update Firestore user document
   Future<String?> uploadProfilePhoto({
     required String uid,
     required Uint8List bytes,
@@ -55,14 +55,16 @@ class UserService {
     final extension = _resolveExtension(fileName);
     final ref = _storage.ref().child('avatars/$uid/$timestamp$extension');
 
-    // Upload the raw bytes so this works on every platform (web/mobile/desktop)
-    await ref.putData(bytes, SettableMetadata(contentType: _contentType(extension)));
+    // Upload the raw bytes (works across web/mobile/desktop)
+    await ref.putData(
+      bytes,
+      SettableMetadata(contentType: _contentType(extension)),
+    );
 
     final url = await ref.getDownloadURL();
-    await _db
-        .collection('users')
-        .doc(uid)
-        .set({'photoUrl': url}, SetOptions(merge: true));
+    await _db.collection('users').doc(uid).set({
+      'photoUrl': url,
+    }, SetOptions(merge: true));
     return url;
   }
 
@@ -76,20 +78,44 @@ class UserService {
     return '.jpg';
   }
 
-  Stream<QuerySnapshot<Map<String,dynamic>>> adminDoc(){
-    try{
-    return FirebaseFirestore.instance
-      .collectionGroup("attendance")
-            .orderBy("date")
-            .snapshots();
-    }catch(e,st){
-    debugPrint("❌ Error loading adminDoc: $e\n$st");
-      return const Stream.empty();
-      
+  /// 🔹 Admin: watch attendance across all users
+  /// Supports optional `startDate` and `endDate` filters.
+  Stream<QuerySnapshot<Map<String, dynamic>>> adminDoc({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    try {
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+          .collectionGroup("attendance");
+
+      // ✅ Apply date filters if provided
+      if (startDate != null) {
+        query = query.where(
+          "date",
+          isGreaterThanOrEqualTo:
+              "${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}",
+        );
       }
 
+      if (endDate != null) {
+        query = query.where(
+          "date",
+          isLessThanOrEqualTo:
+              "${endDate.year.toString().padLeft(4, '0')}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}",
+        );
+      }
+
+      // Always order newest first
+      query = query.orderBy("date", descending: true);
+
+      return query.snapshots();
+    } catch (e, st) {
+      debugPrint("❌ Error loading adminDoc: $e\n$st");
+      return const Stream.empty();
+    }
   }
 
+  /// 🔹 Resolve MIME type based on file extension
   String _contentType(String extension) {
     switch (extension) {
       case '.png':

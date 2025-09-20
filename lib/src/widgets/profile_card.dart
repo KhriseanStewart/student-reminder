@@ -1,61 +1,55 @@
 import 'package:flutter/material.dart';
+import 'package:students_reminder/src/models/app_user.dart';
 
 class ProfileCard extends StatelessWidget {
-  final String name;
-  final String classLabel;
-  final String? photoUrl;
+  final AppUser student;
 
-  const ProfileCard({
-    super.key,
-    required this.name,
-    required this.classLabel,
-    this.photoUrl,
-  });
+  const ProfileCard({super.key, required this.student});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.deepPurple, width: 1.2),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor: Colors.deepPurple,
-            backgroundImage: photoUrl != null ? NetworkImage(photoUrl!) : null,
-            child: photoUrl == null
-                ? Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : 'S',
-                    style: const TextStyle(color: Colors.white, fontSize: 22),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 28,
+          backgroundImage: student.photoUrl != null
+              ? NetworkImage(student.photoUrl!)
+              : null,
+          backgroundColor: Colors.deepPurpleAccent,
+          child: student.photoUrl == null
+              ? Text(
+                  student.firstName.isNotEmpty
+                      ? student.firstName[0].toUpperCase()
+                      : '?',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.bold,
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Class: $classLabel",
-                  style: const TextStyle(color: Colors.white70),
-                ),
-              ],
+                )
+              : null,
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              student.displayName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
             ),
-          ),
-        ],
-      ),
+            Text(
+              student.courseGroup,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:students_reminder/src/models/app_user.dart';
 import 'package:students_reminder/src/services/session_manager.dart';
 
 class AuthService {
@@ -11,36 +12,55 @@ class AuthService {
   Stream<User?> authStateChanged() => _auth.authStateChanges();
   User? get currentUser => _auth.currentUser;
 
-  // Register CODE
+  /// Register a new user and ensure Firestore profile is created
   Future<UserCredential> register({
     required String firstName,
     required String lastName,
-    required String courseGroup, // 'web' | 'mobile'
+    required String courseGroup,
     required String email,
     required String phone,
     required String password,
   }) async {
+    // 1️⃣ Create FirebaseAuth user
     final cred = await _auth.createUserWithEmailAndPassword(
       email: email,
       password: password,
     );
+
     final uid = cred.user!.uid;
-    await _db.collection('users').doc(uid).set({
-      'firstName': firstName,
-      'lastName': lastName,
-      'courseGroup': courseGroup,
-      'email': email,
-      'phone': phone,
-      'gender': null,
-      'bio': null,
-      'createdAt': FieldValue.serverTimestamp(),
-      'role': 'student', // 👈 Default role when registering
-    });
+
+    // 2️⃣ Build AppUser profile
+    final appUser = AppUser(
+      uid: uid,
+      firstName: firstName,
+      lastName: lastName,
+      courseGroup: courseGroup,
+      email: email,
+      phone: phone,
+      role: "student", // 👈 default
+      createdAt: DateTime.now(),
+    );
+
+    // 3️⃣ Save profile to Firestore
+    await _db
+        .collection("users")
+        .doc(uid)
+        .set(appUser.toMap(), SetOptions(merge: true));
+
+    // 4️⃣ Save session
     await SessionManager.onLoginSuccess();
+
     return cred;
   }
 
-  // Login CODE
+  /// Fetch profile by uid
+  Future<AppUser?> fetchProfile(String uid) async {
+    final snap = await _db.collection("users").doc(uid).get();
+    if (!snap.exists) return null;
+    return AppUser.fromMap(uid, snap.data()!);
+  }
+
+  /// Login with FirebaseAuth + ensure session is set
   Future<UserCredential> login(String email, String password) async {
     final cred = await _auth.signInWithEmailAndPassword(
       email: email,
@@ -50,29 +70,28 @@ class AuthService {
     return cred;
   }
 
-  // Logout CODE
+  /// Logout
   Future<void> logout() async {
     await _auth.signOut();
     await SessionManager.clear();
   }
 
-  // Password Reset CODE
+  /// Password reset
   Future<void> sendPasswordReset(String email) =>
       _auth.sendPasswordResetEmail(email: email);
 
-  // Get User Role CODE
+  /// Check user role
   Future<String?> getUserRole() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return null;
-    final snap = await _db.collection('users').doc(uid).get();
+    final snap = await _db.collection("users").doc(uid).get();
     return snap.data()?['role'] as String?;
   }
 
-  // Check if user is admin
   Future<bool> isAdmin(String uid) async {
-    final snap = await _db.collection('users').doc(uid).get();
+    final snap = await _db.collection("users").doc(uid).get();
     if (!snap.exists) return false;
     final role = snap.data()?['role'] as String?;
-    return role == 'admin';
+    return role == "admin";
   }
 }

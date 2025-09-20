@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:students_reminder/src/services/auth_service.dart';
-import 'package:students_reminder/src/shared/routes.dart';
+import 'package:students_reminder/src/shared/main_layout.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -10,88 +11,151 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final _first = TextEditingController();
-  final _last = TextEditingController();
-  final _email = TextEditingController();
-  final _phone = TextEditingController();
-  final _password = TextEditingController();
-  String _group = 'mobile'; //    'mobile'  |  'web'
-  bool _busy = false;
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _courseGroupController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  bool _isLoading = false;
+  String? _errorMessage;
 
   Future<void> _register() async {
-    setState(() => _busy = true);
-    final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
-      await AuthService.instance.register(
-        firstName: _first.text.trim(),
-        lastName: _last.text.trim(),
-        courseGroup: _group,
-        email: _email.text.trim(),
-        phone: _phone.text.trim(),
-        password: _password.text,
+      final cred = await AuthService.instance.register(
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        courseGroup: _courseGroupController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        password: _passwordController.text.trim(),
       );
+
+      final uid = cred.user!.uid;
+      final appUser = await AuthService.instance.fetchProfile(uid);
+
+      if (appUser == null) {
+        throw Exception("Profile not found after registration.");
+      }
+
       if (!mounted) return;
-      navigator.pushReplacementNamed(AppRoutes.main);
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => MainLayoutPage(user: appUser)),
+      );
+    } on FirebaseAuthException catch (e) {
+      setState(() => _errorMessage = e.message ?? "Registration failed");
     } catch (e) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text('Registration failed : $e')),
-      );
+      setState(() => _errorMessage = e.toString());
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Student Registration')),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(
-              controller: _first,
-              decoration: InputDecoration(labelText: 'First name'),
-            ),
-            SizedBox(height: 12),
-            TextField(
-              controller: _last,
-              decoration: InputDecoration(labelText: 'Last name'),
-            ),
-            SizedBox(height: 12),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'mobile', label: Text('Mobile')),
-                ButtonSegment(value: 'web', label: Text('Web')),
+      backgroundColor: Colors.black,
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.person_add,
+                  size: 80,
+                  color: Colors.deepPurple,
+                ),
+                const SizedBox(height: 20),
+                _buildTextField(_firstNameController, "First Name"),
+                const SizedBox(height: 12),
+                _buildTextField(_lastNameController, "Last Name"),
+                const SizedBox(height: 12),
+                _buildTextField(_courseGroupController, "Course Group"),
+                const SizedBox(height: 12),
+                _buildTextField(
+                  _emailController,
+                  "Email",
+                  keyboard: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 12),
+                _buildTextField(
+                  _phoneController,
+                  "Phone",
+                  keyboard: TextInputType.phone,
+                ),
+                const SizedBox(height: 12),
+                _buildTextField(_passwordController, "Password", obscure: true),
+                const SizedBox(height: 24),
+
+                if (_errorMessage != null)
+                  Text(
+                    _errorMessage!,
+                    style: const TextStyle(color: Colors.redAccent),
+                  ),
+
+                const SizedBox(height: 16),
+                _isLoading
+                    ? const CircularProgressIndicator(color: Colors.deepPurple)
+                    : ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 14,
+                          ),
+                        ),
+                        onPressed: _register,
+                        child: const Text(
+                          "Register",
+                          style: TextStyle(color: Colors.white, fontSize: 16),
+                        ),
+                      ),
+
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () =>
+                      Navigator.pushReplacementNamed(context, "/login"),
+                  child: const Text(
+                    "Already have an account? Login",
+                    style: TextStyle(color: Colors.amber),
+                  ),
+                ),
               ],
-              selected: {_group},
-              onSelectionChanged: (sel) => setState(() => _group = sel.first),
             ),
-            SizedBox(height: 12),
-            TextField(
-              controller: _email,
-              decoration: InputDecoration(labelText: 'Email address'),
-            ),
-            SizedBox(height: 12),
-            TextField(
-              controller: _phone,
-              decoration: InputDecoration(labelText: 'Phone #'),
-            ),
-            SizedBox(height: 12),
-            TextField(
-              controller: _password,
-              decoration: InputDecoration(labelText: 'Password'),
-            ),
-            SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _busy ? null : _register,
-              child: _busy
-                  ? CircularProgressIndicator()
-                  : Text('Create Account'),
-            ),
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hint, {
+    bool obscure = false,
+    TextInputType keyboard = TextInputType.text,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      keyboardType: keyboard,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Colors.white54),
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: Colors.deepPurple),
+        ),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: Colors.amber),
         ),
       ),
     );
