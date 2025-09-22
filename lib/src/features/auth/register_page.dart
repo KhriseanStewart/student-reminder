@@ -37,10 +37,9 @@ class _RegisterPageState extends State<RegisterPage> {
         password: _passwordController.text.trim(),
       );
 
-      final uid = cred.user!.uid;
-      final appUser = await AuthService.instance.fetchProfile(uid);
+      final user = cred.user!;
 
-      if (appUser == null) {
+      if (user == null) {
         throw Exception("Profile not found after registration.");
       }
 
@@ -48,7 +47,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => MainLayoutPage(user: appUser)),
+        MaterialPageRoute(builder: (_) => MainLayoutPage(user: user)),
       );
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = e.message ?? "Registration failed");

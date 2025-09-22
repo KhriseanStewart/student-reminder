@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:students_reminder/src/core/app_theme.dart';
 import 'package:students_reminder/src/core/bootstrap.dart';
+import 'package:students_reminder/src/features/splash/splash_gate.dart';
 import 'package:students_reminder/src/shared/routes.dart';
 
 Future<void> main() async {
@@ -28,7 +29,7 @@ class StudentsReminderApp extends StatelessWidget {
 
       // ✅ Only use route system (no home:)
       onGenerateRoute: AppRoutes.onGenerateRoute,
-      initialRoute: AppRoutes.root, // 🔑 Always start at SplashGate
+      home: SplashGate(),
     );
   }
 }

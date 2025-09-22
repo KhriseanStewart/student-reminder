@@ -29,10 +29,9 @@ class _LoginPageState extends State<LoginPage> {
         _passwordController.text.trim(),
       );
 
-      final uid = cred.user!.uid;
-      final appUser = await AuthService.instance.fetchProfile(uid);
+      final user = cred.user!;
 
-      if (appUser == null) {
+      if (user == null) {
         throw Exception("Profile not found. Please register again.");
       }
 
@@ -41,7 +40,7 @@ class _LoginPageState extends State<LoginPage> {
       // ✅ Navigate role-aware
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => MainLayoutPage(user: appUser)),
+        MaterialPageRoute(builder: (_) => MainLayoutPage(user: user)),
       );
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = e.message ?? "Authentication failed");

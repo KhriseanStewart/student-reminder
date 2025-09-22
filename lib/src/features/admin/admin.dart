@@ -156,7 +156,7 @@ class _AdminPageState extends State<AdminPage> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color.fromARGB(255, 22, 22, 22),
       appBar: AppBar(
         title: const Text(
           'Admin — Attendance',
@@ -168,7 +168,7 @@ class _AdminPageState extends State<AdminPage> {
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.deepPurple, Colors.black],
+              colors: [Colors.blue, Color.fromARGB(255, 22, 22, 22)],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -187,17 +187,9 @@ class _AdminPageState extends State<AdminPage> {
               child: CircularProgressIndicator(color: Colors.deepPurple),
             );
           }
-          if (snap.hasError) {
-            return Center(
-              child: Text(
-                'Error: ${snap.error}',
-                style: const TextStyle(color: Colors.redAccent),
-              ),
-            );
-          }
 
           final docs = snap.data?.docs ?? [];
-          if (docs.isEmpty) {
+          if (!snap.hasData || docs.isEmpty) {
             return const Center(
               child: Text(
                 'No attendance records found',
@@ -216,19 +208,8 @@ class _AdminPageState extends State<AdminPage> {
                 padding: const EdgeInsets.all(16),
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Colors.deepPurple, Colors.deepPurpleAccent],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.grey.shade700,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.deepPurple.withValues(alpha: 0.4),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -270,6 +251,7 @@ class _AdminPageState extends State<AdminPage> {
               const SizedBox(height: 24),
 
               // 👨‍🎓 Student list
+              
               ...buildStudentList(docs),
             ],
           );
@@ -297,7 +279,7 @@ class _AdminPageState extends State<AdminPage> {
             return const SizedBox(
               height: 80,
               child: Center(
-                child: CircularProgressIndicator(color: Colors.deepPurple),
+                child: CircularProgressIndicator(color: Colors.lightBlue),
               ),
             );
           }

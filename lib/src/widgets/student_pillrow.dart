@@ -41,9 +41,8 @@ class StudentRow extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.black,
+        // color: Colors.grey.shade700,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.deepPurple, width: 1.2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

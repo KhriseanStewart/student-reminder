@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:students_reminder/src/models/app_user.dart';
 import 'package:students_reminder/src/features/home/home_page.dart';
@@ -7,7 +8,7 @@ import 'package:students_reminder/src/features/attendance/attendance_page.dart';
 import 'package:students_reminder/src/features/admin/admin.dart';
 
 class MainLayoutPage extends StatefulWidget {
-  final AppUser user; // 🔑 pass logged-in user
+  final User? user; // 🔑 pass logged-in user
 
   const MainLayoutPage({super.key, required this.user});
 
@@ -34,17 +35,6 @@ class _MainLayoutPageState extends State<MainLayoutPage> {
       const NavigationDestination(icon: Icon(Icons.access_time), label: 'Attendance'),
       const NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
     ];
-
-    // If user is an admin → add Admin tab
-    if (widget.user.isAdmin) {
-      pages.add(const AdminPage());
-      destinations.add(
-        const NavigationDestination(
-          icon: Icon(Icons.admin_panel_settings),
-          label: 'Admin',
-        ),
-      );
-    }
 
     return Scaffold(
       body: pages[_index],
