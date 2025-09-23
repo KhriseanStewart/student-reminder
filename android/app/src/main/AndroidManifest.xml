@@ -26,8 +26,8 @@
 
         <!-- ✅ Google Maps API key (placeholder; value comes from build.gradle.kts) -->
         <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${MAPS_API_KEY}" />
+            android:name="com.google.android.maps.v2.API_KEY"
+            android:value="AIzaSyCOHMMG5JEkhaxpXVn0AnHat28kutn6ZQ0"/>
 
         <activity
             android:name=".MainActivity"

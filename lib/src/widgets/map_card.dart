@@ -118,19 +118,15 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
         ),
       );
 
-      setState(() {
-        _currentPosition = position;
-        _markers = {
-          Marker(
-            markerId: const MarkerId('current_location'),
-            position: LatLng(position.latitude, position.longitude),
-            infoWindow: const InfoWindow(title: 'My Location'),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueBlue,
-            ),
+      if (_mapController != null) {
+        _mapController!.animateCamera(
+          duration: Duration(milliseconds: 300),
+          CameraUpdate.newLatLngZoom(
+            LatLng(position.latitude, position.longitude),
+            15,
           ),
-        };
-      });
+        );
+      }
 
       _emitStatus(MapStatus.ready(position));
     } catch (e) {
@@ -186,21 +182,16 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
             onMapCreated: _onMapCreated,
             initialCameraPosition: widget.fixedPosition != null
                 ? CameraPosition(target: widget.fixedPosition!, zoom: 15)
-                : _currentPosition != null
-                ? CameraPosition(
+                : CameraPosition(
                     target: LatLng(
-                      _currentPosition!.latitude,
-                      _currentPosition!.longitude,
+                      _currentPosition?.latitude ?? 0,
+                      _currentPosition?.longitude ?? 0,
                     ),
                     zoom: 15.0,
-                  )
-                : _defaultPosition,
+                  ),
             markers: _markers,
-            myLocationEnabled:
-                widget.fixedPosition == null, // ✅ only student sees blue dot
+            myLocationEnabled: true,
             myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            compassEnabled: false,
             liteModeEnabled: true,
           ),
         ),

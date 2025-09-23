@@ -323,7 +323,7 @@ class _AttendancePageState extends State<AttendancePage>
           clipBehavior: Clip.antiAlias,
           child: SizedBox(
             height: 300,
-            child: MapCard(onStatusChanged: _handleMapStatusChanged),
+            child: MapCard(onStatusChanged: _handleMapStatusChanged,),
           ),
         );
 

@@ -44,6 +44,8 @@ class SearchResultsScreen extends StatelessWidget {
                       await results[i].reference.update({'status': 'absent'}),
                   onEditReason: () async =>
                       await results[i].reference.update({'status': 'late'}),
+                  onDismiss: () async =>
+                      await results[i].reference.update({'dismiss': true}),
                 );
               },
             ),

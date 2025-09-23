@@ -90,21 +90,10 @@ class _DateSearchMapBarState extends State<DateSearchMapBar> {
         // 🔍 Search bar with purple gradient border glow
         Expanded(
           child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30),
-              gradient: LinearGradient(
-                colors: [
-                  Colors.deepPurple.withOpacity(0.8),
-                  Colors.deepPurple.withOpacity(0.2),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(30)),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.black,
                 borderRadius: BorderRadius.circular(30),
               ),
               child: Row(
@@ -122,6 +111,8 @@ class _DateSearchMapBarState extends State<DateSearchMapBar> {
                         hintStyle: TextStyle(color: Colors.white54),
                         border: InputBorder.none,
                         isCollapsed: true,
+                        fillColor: Colors.transparent,
+                        filled: true,
                       ),
                       onSubmitted: widget.onSearch,
                     ),
@@ -153,23 +144,8 @@ class _DateSearchMapBarState extends State<DateSearchMapBar> {
           child: Container(
             width: 60,
             height: 48,
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.deepPurple, width: 1.2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.deepPurple.withOpacity(0.25),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.more_horiz,
-              color: Colors.deepPurpleAccent,
-              size: 26,
-            ),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(16)),
+            child: const Icon(Icons.more_horiz, color: Colors.white, size: 26),
           ),
         ),
       ],
