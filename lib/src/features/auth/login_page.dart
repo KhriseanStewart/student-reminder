@@ -14,6 +14,8 @@ class _LoginPageState extends State<LoginPage> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _busy = false;
+  
+  get controller => null;
 
   Future<void> _login() async {
     setState(() => _busy = true);
