@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:students_reminder/src/services/auth_service.dart';
 import 'package:students_reminder/src/shared/routes.dart';
@@ -53,7 +54,7 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 🖼 Background Image
+      // 🖼 Background Image with gradient
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -62,10 +63,10 @@ class _RegisterPageState extends State<RegisterPage> {
             end: Alignment.bottomRight,
           ),
           image: DecorationImage(
-            image: AssetImage("assets/images/computer_bg.png"), // 👈 add your computer image here
+            image: AssetImage("assets/images/computer_bg.png"),
             fit: BoxFit.cover,
             colorFilter: ColorFilter.mode(
-              Colors.black.withOpacity(0.5), // dark overlay for readability
+              Colors.black.withOpacity(0.5),
               BlendMode.darken,
             ),
           ),
@@ -116,8 +117,10 @@ class _RegisterPageState extends State<RegisterPage> {
                     SizedBox(height: 20),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(255, 39, 67, 95),
-                        foregroundColor: const Color.fromARGB(255, 245, 242, 248),
+                        backgroundColor:
+                            const Color.fromARGB(255, 39, 67, 95),
+                        foregroundColor:
+                            const Color.fromARGB(255, 245, 242, 248),
                         padding: EdgeInsets.symmetric(
                             horizontal: 40, vertical: 14),
                         shape: RoundedRectangleBorder(
@@ -139,6 +142,22 @@ class _RegisterPageState extends State<RegisterPage> {
                               style: TextStyle(fontSize: 16),
                             ),
                     ),
+                    const SizedBox(height: 12),
+                    // 👇 Text button to go back to login
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pushReplacementNamed(
+                            context, AppRoutes.login);
+                      },
+                      child: Text(
+                        "Already have an account? Log in",
+                        style: TextStyle(
+                          color: Colors.blue.shade200,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -155,13 +174,19 @@ class _RegisterPageState extends State<RegisterPage> {
       controller: controller,
       obscureText: obscure,
       keyboardType: keyboardType,
+      style: TextStyle(color: Colors.black87),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: Colors.blue.shade900),
+        labelStyle:
+            TextStyle(color: Colors.black87, fontWeight: FontWeight.w500),
         filled: true,
-        fillColor: Colors.blue.shade50,
+        fillColor: Colors.white.withOpacity(0.9),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.blue.shade700, width: 2),
         ),
       ),
     );
