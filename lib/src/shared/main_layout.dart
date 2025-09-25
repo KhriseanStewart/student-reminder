@@ -7,7 +7,7 @@ import 'package:students_reminder/src/features/attendance/attendance_page.dart';
 import 'package:students_reminder/src/features/admin/admin.dart';
 
 class MainLayoutPage extends StatefulWidget {
-  final AppUser user; // 🔑 pass logged-in user
+  final AppUser user; // 🔑 logged-in user
 
   const MainLayoutPage({super.key, required this.user});
 
@@ -18,11 +18,13 @@ class MainLayoutPage extends StatefulWidget {
 class _MainLayoutPageState extends State<MainLayoutPage> {
   int _index = 0;
 
+  void _setIndex(int i) => setState(() => _index = i);
+
   @override
   Widget build(BuildContext context) {
-    // Always show base student tabs
+    // Base student tabs
     final pages = [
-      const HomePage(),
+      HomePage(onTabChange: _setIndex, user: widget.user), // 👈 pass callback + user
       const MyNotesPage(),
       const AttendancePage(),
       const ProfilePage(),
@@ -35,7 +37,7 @@ class _MainLayoutPageState extends State<MainLayoutPage> {
       const NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
     ];
 
-    // If user is an admin → add Admin tab
+    // If admin → add Admin tab
     if (widget.user.isAdmin) {
       pages.add(const AdminPage());
       destinations.add(
@@ -51,7 +53,7 @@ class _MainLayoutPageState extends State<MainLayoutPage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         destinations: destinations,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: _setIndex,
       ),
     );
   }

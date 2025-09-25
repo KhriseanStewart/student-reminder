@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 // ✅ Custom widgets
-import 'package:students_reminder/src/widgets/profile_card.dart';
+import 'package:students_reminder/src/features/profile/widgets/profile_card.dart';
 import 'package:students_reminder/src/widgets/analytics_chart.dart';
 import 'package:students_reminder/src/widgets/actions_row.dart';
 import 'package:students_reminder/src/widgets/timeline_item.dart';
@@ -13,22 +13,17 @@ import 'package:students_reminder/src/widgets/analytics_counters.dart';
 // ✅ Models
 import 'package:students_reminder/src/models/app_user.dart';
 
-/// A smart attendance detail page that works for both:
-/// 1. Admin viewing any student
-/// 2. Student viewing their own attendance
 class UserDetailPage extends StatefulWidget {
   final AppUser? student; // the profile being viewed (admin flow)
   final String? userId; // student UID (student flow)
   final AppUser currentUser; // 🔑 always the logged-in user
 
-  /// Factory for admin view (admin opens another student's profile)
   const UserDetailPage.admin({
     super.key,
     required this.student,
     required this.currentUser,
   }) : userId = null;
 
-  /// Factory for student view (student views self)
   const UserDetailPage.student({
     super.key,
     required this.userId,
@@ -40,16 +35,12 @@ class UserDetailPage extends StatefulWidget {
 }
 
 class _UserDetailPageState extends State<UserDetailPage> {
-  // ────────────────────────── ROLE HELPERS ──────────────────────────
-  /// True if logged-in user is admin
   bool get isAdmin => widget.currentUser.role.toLowerCase() == "admin";
 
-  /// True if logged-in user is viewing their own page
   bool get isViewingSelf =>
       widget.userId == widget.currentUser.uid ||
       widget.student?.uid == widget.currentUser.uid;
 
-  // ────────────────────────── FIRESTORE REFS ──────────────────────────
   DocumentReference<Map<String, dynamic>> get _userRef {
     final uid = widget.userId ?? widget.student!.uid;
     return FirebaseFirestore.instance.collection('users').doc(uid);
@@ -58,7 +49,6 @@ class _UserDetailPageState extends State<UserDetailPage> {
   CollectionReference<Map<String, dynamic>> get _attendanceCol =>
       _userRef.collection('attendance');
 
-  // ────────────────────────── FORMAT HELPERS ──────────────────────────
   String _fmtTime(dynamic ts) {
     if (ts == null) return "—";
     try {
@@ -94,9 +84,8 @@ class _UserDetailPageState extends State<UserDetailPage> {
     }
   }
 
-  // ────────────────────────── ACTIONS (restricted) ──────────────────────────
   Future<void> _markStatus(String status) async {
-    if (!isAdmin) return; // 🚫 Students cannot mark
+    if (!isAdmin) return;
     final ref = _attendanceCol.doc(_fmtDateKey(DateTime.now()));
     await ref.set({
       'status': status,
@@ -109,7 +98,7 @@ class _UserDetailPageState extends State<UserDetailPage> {
   }
 
   Future<void> _editLateReason() async {
-    if (!isAdmin) return; // 🚫 Students cannot edit
+    if (!isAdmin) return;
     final controller = TextEditingController();
     final res = await showDialog<String>(
       context: context,
@@ -150,7 +139,6 @@ class _UserDetailPageState extends State<UserDetailPage> {
     }, SetOptions(merge: true));
   }
 
-  // ────────────────────────── ANALYTICS HELPERS ──────────────────────────
   Map<String, int> _tally(
     Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) {
@@ -159,10 +147,11 @@ class _UserDetailPageState extends State<UserDetailPage> {
       final s = (d['status'] ?? '').toString().toLowerCase();
       if (s == 'present') {
         p++;
-      } else if (s == 'absent')
+      } else if (s == 'absent') {
         a++;
-      else if (s == 'late')
+      } else if (s == 'late') {
         l++;
+      }
     }
     return {'present': p, 'late': l, 'absent': a};
   }
@@ -189,7 +178,6 @@ class _UserDetailPageState extends State<UserDetailPage> {
     return list;
   }
 
-  // ────────────────────────── UI ──────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -227,9 +215,13 @@ class _UserDetailPageState extends State<UserDetailPage> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // ✅ Profile
+              // ✅ Profile (fixed)
               if (widget.student != null)
-                ProfileCard(student: widget.student!)
+                ProfileCard(
+                  name: widget.student!.displayName,
+                  role: widget.student!.role,
+                  photoUrl: widget.student!.photoUrl,
+                )
               else
                 FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                   future: _userRef.get(),
@@ -245,8 +237,11 @@ class _UserDetailPageState extends State<UserDetailPage> {
                       );
                     }
                     final data = snap.data!.data() ?? {};
+                    final user = AppUser.fromMap(_userRef.id, data);
                     return ProfileCard(
-                      student: AppUser.fromMap(_userRef.id, data),
+                      name: user.displayName,
+                      role: user.role,
+                      photoUrl: user.photoUrl,
                     );
                   },
                 ),
@@ -257,26 +252,24 @@ class _UserDetailPageState extends State<UserDetailPage> {
                 late: counts['late'] ?? 0,
                 absent: counts['absent'] ?? 0,
               ),
-
               const SizedBox(height: 16),
+
               AnalyticsCharts(
                 series: last7
                     .map((e) => e['status'] == 'present' ? 1 : 0)
                     .toList(),
                 counts: counts,
               ),
-
               const SizedBox(height: 16),
 
-              // ✅ Only admins see these action buttons
               if (isAdmin)
                 ActionsRow(
                   onPresent: () => _markStatus('present'),
                   onAbsent: () => _markStatus('absent'),
                   onLate: _editLateReason,
                 ),
-
               const SizedBox(height: 16),
+
               ...attnDocs.map((d) {
                 final data = d.data();
                 final status = (data['status'] ?? 'unknown').toString();

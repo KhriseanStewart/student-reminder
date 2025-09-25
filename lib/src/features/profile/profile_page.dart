@@ -1,208 +1,167 @@
+// lib/src/features/profile/profile_page.dart
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:students_reminder/src/features/auth/login_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:students_reminder/src/services/auth_service.dart';
-import 'package:students_reminder/src/services/user_service.dart';
 
-class ProfilePage extends StatefulWidget {
+// widgets
+import 'widgets/header.dart';
+import 'widgets/info_card.dart';
+import 'widgets/stats_card.dart';
+import 'widgets/profile_action_tile.dart';
+import 'widgets/logout_bottom_sheet.dart'; // ✅ new bottom sheet
+
+// screens
+import 'edit_profile_page.dart';
+
+class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
-  @override
-  State<ProfilePage> createState() => _ProfilePageState();
-}
-
-class _ProfilePageState extends State<ProfilePage> {
-  // --- Controllers & state ---
-  final _bio = TextEditingController();
-  final _phone = TextEditingController();
-  final _firstName = TextEditingController();
-  final _lastName = TextEditingController();
-
-  String? _photoUrl;
-  bool _busy = false;
-
-  // --- Logout ---
   Future<void> _onLogout(BuildContext context) async {
-    // Capture navigator & messenger BEFORE any await to avoid context-after-await lint
-    final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent, // let widget handle bg
+      builder: (ctx) => const LogoutBottomSheet(),
+    );
 
-    try {
-      final bool? safeToLogout = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Logout'),
-          content: const Text('Are you sure you want to log out?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Yes'),
-            ),
-          ],
-        ),
-      );
-
-      if (safeToLogout != true) return;
-
+    if (result == true) {
       await AuthService.instance.logout();
-
-      if (!mounted) return;
-      navigator.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-        (route) => false,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text('Logout failed: $e')),
-      );
-    }
-  }
-
-  // --- Update Profile ---
-  Future<void> _updateProfile() async {
-    setState(() => _busy = true);
-
-    // Capture messenger BEFORE await
-    final messenger = ScaffoldMessenger.of(context);
-
-    try {
-      final uid = AuthService.instance.currentUser!.uid;
-      await UserService.instance.updateMyProfile(
-        uid,
-        phone: _phone.text.trim(),
-        bio: _bio.text.trim(),
-      );
-
-      if (!mounted) return;
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Profile updated!')),
-      );
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  // --- Upload/Select image ---
-  Future<void> _onPickPhoto() async {
-    final picker = ImagePicker();
-    final file = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-    );
-    if (file == null) return;
-
-    final uid = AuthService.instance.currentUser!.uid;
-    final bytes = await file.readAsBytes();
-    await UserService.instance.uploadProfilePhoto(
-      uid: uid,
-      bytes: bytes,
-      fileName: file.name,
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    final uid = AuthService.instance.currentUser!.uid;
-    UserService.instance.getUser(uid).listen((doc) {
-      final data = doc.data();
-      if (data != null && mounted) {
-        _firstName.text = (data['firstName'] ?? '') as String;
-        _lastName.text = (data['lastName'] ?? '') as String;
-        _bio.text = (data['bio'] ?? '') as String;
-        _phone.text = (data['phone'] ?? '') as String;
-        setState(() => _photoUrl = data['photoUrl'] as String?);
+      if (context.mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, "/login", (_) => false);
       }
-    });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = AuthService.instance.currentUser!;
+    final user = AuthService.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(body: Center(child: Text("Not logged in")));
+    }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Profile'),
-        actions: [
-          IconButton(
-            onPressed: () => _onLogout(context),
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundImage: _photoUrl != null ? NetworkImage(_photoUrl!) : null,
-            child: _photoUrl == null ? const Icon(Icons.person, size: 30) : null,
-          ),
-          TextButton.icon(
-            icon: const Icon(Icons.camera_alt),
-            onPressed: _onPickPhoto,
-            label: const Text('Change Image'),
-          ),
-          const SizedBox(height: 12),
-          Text('Name: ${_firstName.text} ${_lastName.text} (set on register)'),
-          Text('Email: ${user.email}'), // ← fixed label
-          const SizedBox(height: 12),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection("users")
+          .doc(user.uid)
+          .snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-          TextField(
-            controller: _phone,
-            decoration: const InputDecoration(labelText: 'Phone #'),
-          ),
-          const SizedBox(height: 12),
+        final data = snap.data!.data() ?? {};
+        final name = "${data['firstName'] ?? ''} ${data['lastName'] ?? ''}"
+            .trim();
+        final phone = data['phone'] ?? "";
+        final bio = data['bio'] ?? "";
+        final group = data['courseGroup'] ?? "";
+        final photoUrl = data['photoUrl'];
 
-          TextField(
-            controller: _bio,
-            decoration: const InputDecoration(labelText: 'Bio'),
-          ),
-          const SizedBox(height: 14),
+        final present = (data['attendance']?['present'] ?? 0) as int;
+        final late = (data['attendance']?['late'] ?? 0) as int;
+        final absent = (data['attendance']?['absent'] ?? 0) as int;
 
-          ElevatedButton(
-            onPressed: _busy ? null : _updateProfile,
-            child: _busy
-                ? const SizedBox(
-                    width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Save/Update'),
-          ),
-          const SizedBox(height: 12),
+        return Scaffold(
+          backgroundColor: Colors.black,
+          body: Column(
+            children: [
+              // 🔹 Header
+              ProfileHeader(
+                name: name.isNotEmpty ? name : "Unknown User",
+                email: user.email ?? "No email",
+                photoUrl: photoUrl,
+                onChangePhoto: () {
+                  // handled in header or EditProfilePage
+                },
+              ),
 
-          OutlinedButton(
-            onPressed: () async {
-              // Capture messenger BEFORE await to avoid context-after-await lint
-              final messenger = ScaffoldMessenger.of(context);
-              await AuthService.instance.sendPasswordReset(user.email!);
-              if (!mounted) return;
-              messenger.showSnackBar(
-                const SnackBar(content: Text('Password reset email sent!')),
-              );
-            },
-            child: const Text('Send Password reset email'),
-          ),
-          const SizedBox(height: 12),
+              // 🔹 Main content
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    _sectionTitle("Information"),
+                    if (phone.isNotEmpty)
+                      InfoCard(
+                        icon: Icons.phone,
+                        label: "Phone",
+                        value: Text(
+                          phone,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    if (bio.isNotEmpty)
+                      InfoCard(
+                        icon: Icons.info_outline,
+                        label: "Bio",
+                        value: Text(
+                          bio,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    if (group.isNotEmpty)
+                      InfoCard(
+                        icon: Icons.school,
+                        label: "Group",
+                        value: Text(
+                          group,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    const SizedBox(height: 20),
 
-          TextButton(
-            onPressed: () async {
-              // optional quick logout (kept simple)
-              final navigator = Navigator.of(context);
-              await AuthService.instance.logout();
-              if (!mounted) return;
-              navigator.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const LoginPage()),
-                (route) => false,
-              );
-            },
-            child: const Text('Logout'),
+                    _sectionTitle("Attendance Stats"),
+                    StatsCard(present: present, late: late, absent: absent),
+                    const SizedBox(height: 24),
+
+                    _sectionTitle("Actions"),
+                    ProfileActionTile(
+                      icon: Icons.edit,
+                      label: "Edit Profile",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const EditProfilePage(),
+                          ),
+                        );
+                      },
+                    ),
+                    ProfileActionTile(
+                      icon: Icons.settings,
+                      label: "Settings",
+                      onTap: () {
+                        debugPrint("Settings tapped");
+                        // ✅ Could also slide up a bottom sheet here later
+                      },
+                    ),
+                    ProfileActionTile(
+                      icon: Icons.logout,
+                      label: "Logout",
+                      onTap: () => _onLogout(context),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        );
+      },
+    );
+  }
+
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
+        ),
       ),
     );
   }

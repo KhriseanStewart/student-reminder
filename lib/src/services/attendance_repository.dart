@@ -4,6 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:students_reminder/src/services/auth_service.dart';
 
+/// Attendance status enum
+enum AttendanceStatus { present, late, absent }
+
 /// Model for a single day of attendance
 class AttendanceDay {
   AttendanceDay({
@@ -53,6 +56,27 @@ class AttendanceDay {
       userId: data['userId'] as String?,
     );
   }
+
+  AttendanceDay copyWith({
+    String? status,
+    DateTime? clockOutAt,
+    double? clockOutLat,
+    double? clockOutLng,
+  }) {
+    return AttendanceDay(
+      id: id,
+      dateId: dateId,
+      status: status ?? this.status,
+      clockInAt: clockInAt,
+      clockOutAt: clockOutAt ?? this.clockOutAt,
+      clockInLat: clockInLat,
+      clockInLng: clockInLng,
+      clockOutLat: clockOutLat ?? this.clockOutLat,
+      clockOutLng: clockOutLng ?? this.clockOutLng,
+      lateReason: lateReason,
+      userId: userId,
+    );
+  }
 }
 
 /// Handles both student + admin attendance operations
@@ -76,11 +100,31 @@ class AttendanceRepository {
 
   // ───────────────────────────── STUDENT METHODS ─────────────────────────────
 
-  /// Watch today’s attendance (null if not clocked in)
+  /// Watch today’s attendance (null if not clocked in).
+  /// 🔹 Includes **auto clock-out at 4:00 PM**
   Stream<AttendanceDay?> watchToday([DateTime? now]) {
-    return todayDocRef(now).snapshots().map((doc) {
+    return todayDocRef(now).snapshots().asyncMap((doc) async {
       if (!doc.exists) return null;
-      return AttendanceDay.fromDoc(doc);
+
+      final day = AttendanceDay.fromDoc(doc);
+
+      final cutoff = DateTime(
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+        16,
+        0,
+      );
+
+      if (day.clockInAt != null &&
+          day.clockOutAt == null &&
+          DateTime.now().isAfter(cutoff)) {
+        // Force clock-out
+        await doc.reference.update({'clockOutAt': Timestamp.fromDate(cutoff)});
+        return day.copyWith(clockOutAt: cutoff);
+      }
+
+      return day;
     });
   }
 
@@ -96,14 +140,20 @@ class AttendanceRepository {
         .map((snap) => snap.docs.map(AttendanceDay.fromDoc).toList());
   }
 
-  /// Clock in (only once per day)
+  /// Clock in (auto-detects present/late)
   Future<void> clockIn({
     required double lat,
     required double lng,
-    required String status, // 'early' | 'late'
     String? lateReason,
   }) async {
     final ref = todayDocRef();
+
+    final now = DateTime.now();
+    final isLate = now.hour > 8 || (now.hour == 8 && now.minute > 30);
+    final status = isLate
+        ? AttendanceStatus.late.name
+        : AttendanceStatus.present.name;
+
     await ref.set({
       'date': todayId(),
       'status': status,
@@ -147,7 +197,7 @@ class AttendanceRepository {
   /// Watch all students’ attendance (for dashboard/overview)
   Stream<List<AttendanceDay>> watchAllAttendance({int limit = 50}) {
     return _db
-        .collectionGroup('attendance') // 🔑 includes all users’ subcollections
+        .collectionGroup('attendance')
         .orderBy('date', descending: true)
         .limit(limit)
         .snapshots()
