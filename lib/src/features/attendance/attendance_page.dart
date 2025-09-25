@@ -16,9 +16,6 @@ import '../../widgets/late_reason_dialog.dart';
 
 const _cardRadius = 20.0;
 const bool _bypassTimeWindowForTesting = false;
-// TODO: revert when time gating is reinstated
-const bool _skipAutoClockOutForTesting = false;
-// TODO: revert when auto clock-out is reinstated
 
 enum _SnackKind { success, warning, error }
 
@@ -44,7 +41,7 @@ class _AttendancePageState extends State<AttendancePage>
   final DateFormat _clockFormat = DateFormat('h:mm a');
   final DateFormat _dayFormat = DateFormat('EEE, MMM d');
   final DateFormat _storageFormat = DateFormat('yyyy-MM-dd');
-  bool _autoClocking = false;
+
   MapStatus _mapStatus = const MapStatus.loading();
 
   @override
@@ -58,9 +55,7 @@ class _AttendancePageState extends State<AttendancePage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _autoClockOutIfNeeded();
-    }
+    if (state == AppLifecycleState.resumed) {}
   }
 
   void _listenToday() {
@@ -70,7 +65,6 @@ class _AttendancePageState extends State<AttendancePage>
         _today = day;
         _isClockedIn = day?.clockInAt != null && day?.clockOutAt == null;
       });
-      _autoClockOutIfNeeded();
     });
   }
 
@@ -100,17 +94,21 @@ class _AttendancePageState extends State<AttendancePage>
 
   // --- Status Colors + Icons ---
   Color _statusColor(String? status) {
+    if (status == null) {
+      return Colors.grey; // No status yet
+    }
+
     switch (status) {
       case 'early':
-        return const Color(0xFF2ECC71);
+        return const Color(0xFF2ECC71); // Green
       case 'late':
-        return const Color(0xFFF39C12);
+        return const Color(0xFFF39C12); // Orange
       case 'present':
-        return const Color(0xFF3498DB);
+        return const Color(0xFF3498DB); // Blue
       case 'absent':
-        return const Color(0xFFE74C3C);
+        return const Color(0xFFE74C3C); // Red
       default:
-        return const Color(0xFF9B59B6);
+        return Colors.purple; // Fallback for unknown statuses
     }
   }
 
@@ -387,7 +385,7 @@ class _AttendancePageState extends State<AttendancePage>
         break;
 
       case MapLoadState.loading:
-      default:
+
         // While loading, show waiting message
         text = 'Detecting location…';
         pillColor = Colors.grey.shade200; // light gray background
@@ -404,7 +402,7 @@ class _AttendancePageState extends State<AttendancePage>
         borderRadius: BorderRadius.circular(30), // rounded pill shape
         border: Border.all(
           // thin border
-          color: textColor.withOpacity(0.4),
+          color: textColor.withValues(alpha: 0.4),
           width: 1.2,
         ),
       ),
@@ -500,27 +498,6 @@ class _AttendancePageState extends State<AttendancePage>
     );
   }
 
-  // ✅ Auto clock-out method
-  void _autoClockOutIfNeeded() {
-    if (_skipAutoClockOutForTesting) return;
-    if (!mounted || _autoClocking) return;
-    final day = _today;
-    if (day == null) return;
-    if (day.clockInAt == null || day.clockOutAt != null) return;
-
-    final cutoff = DateTime(
-      day.clockInAt!.year,
-      day.clockInAt!.month,
-      day.clockInAt!.day,
-      16,
-      0,
-    );
-    if (!DateTime.now().isAfter(cutoff)) return;
-
-    _autoClocking = true;
-    _performClockOut(auto: true).whenComplete(() => _autoClocking = false);
-  }
-
   // ✅ ClockIn + ClockOut
   Future<void> _handleClockIn() async {
     final now = DateTime.now();
@@ -542,62 +519,46 @@ class _AttendancePageState extends State<AttendancePage>
 
     final pos = await _loc.getCurrentPosition();
 
-    // Define cutoffs
-    final start = DateTime(now.year, now.month, now.day, 8, 0); // 8:00 AM
-    final cutoff = DateTime(now.year, now.month, now.day, 8, 30); // 8:30 AM
-
-    String status;
+    // Late reason only if after 8:30
     String? lateReason;
+    if (now.hour > 8 || (now.hour == 8 && now.minute > 30)) {
 
-    if (now.isBefore(start)) {
-      status = 'early'; // before 8:00
-    } else if (now.isBefore(cutoff)) {
-      status = 'present'; // between 8:00 and 8:29
-    } else {
-      status = 'late'; // 8:30 or later
+    if (!mounted) return;
       lateReason = await showLateReasonDialog(context);
+
       if (lateReason == null || lateReason.trim().isEmpty) return;
     }
 
+    // ✅ Let repository calculate status
     await _repo.clockIn(
       lat: pos.latitude,
       lng: pos.longitude,
-      status: status,
       lateReason: lateReason,
     );
 
-    _showSnack('✅ Clocked in (${status.toUpperCase()})', _SnackKind.success);
+    _showSnack('✅ Clocked in successfully', _SnackKind.success);
   }
 
   Future<void> _handleClockOut() async {
-    await _performClockOut(auto: false);
-  }
-
-  Future<void> _performClockOut({required bool auto}) async {
     if (!_isClockedIn) return;
     final day = _today;
     if (day == null || day.clockInAt == null) return;
 
     final hasPerm = await _loc.ensurePermission();
     if (!hasPerm) {
-      if (!auto) {
-        _showSnack(
-          '⚠️ Location permission required to clock out.',
-          _SnackKind.warning,
-        );
-      }
+      _showSnack(
+        '⚠️ Location permission required to clock out.',
+        _SnackKind.warning,
+      );
       return;
     }
 
     final pos = await _loc.getCurrentPosition();
     await _repo.clockOut(lat: pos.latitude, lng: pos.longitude);
 
-    _showSnack(
-      auto
-          ? '✅ Auto clocked out at 4:00 PM.'
-          : '✅ Clocked out. Have a good rest!',
-      _SnackKind.success,
-    );
+    if (!mounted) return;
+
+    _showSnack('✅ Clocked out. Have a good rest!', _SnackKind.success);
   }
 
   void _showSnack(String message, _SnackKind kind) {

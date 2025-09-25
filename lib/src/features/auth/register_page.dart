@@ -193,7 +193,7 @@ class _RegisterPageState extends State<RegisterPage> {
     bool obscure = false,
     TextInputType? keyboardType,
   }) {
-    return TextField(
+    return TextFormField(
       controller: controller,
       obscureText: obscure,
       keyboardType: keyboardType,
@@ -210,6 +210,12 @@ class _RegisterPageState extends State<RegisterPage> {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Colors.blue.shade700, width: 2),
+        ),
+        errorBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: Colors.redAccent),
+        ),
+        focusedErrorBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: Colors.redAccent),
         ),
       ),
     );

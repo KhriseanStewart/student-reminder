@@ -7,11 +7,12 @@ class AppUser {
   final String courseGroup; // e.g. "web" | "mobile"
   final String email;
   final String phone;
+  final String role; // 🔑 "student" | "admin"
   final String? gender;
   final String? bio;
   final String? photoUrl;
   final DateTime? createdAt;
-  final String role; // 🔑 "student" | "admin"
+  final Map<String, dynamic>? attendance; // ✅ NEW: stats
 
   AppUser({
     required this.uid,
@@ -25,9 +26,9 @@ class AppUser {
     this.bio,
     this.photoUrl,
     this.createdAt,
+    this.attendance,
   });
 
-  /// Factory to safely create [AppUser] from Firestore data
   factory AppUser.fromMap(String uid, Map<String, dynamic> data) {
     final createdAtRaw = data['createdAt'];
     DateTime? createdAt;
@@ -45,15 +46,15 @@ class AppUser {
       courseGroup: (data['courseGroup'] ?? '').toString(),
       email: (data['email'] ?? '').toString(),
       phone: (data['phone'] ?? '').toString(),
-      role: (data['role'] ?? 'student').toString(), // ✅ default student
+      role: (data['role'] ?? 'student').toString(),
       gender: data['gender']?.toString(),
       bio: data['bio']?.toString(),
       photoUrl: data['photoUrl']?.toString(),
       createdAt: createdAt,
+      attendance: data['attendance'] as Map<String, dynamic>?, // ✅ safe cast
     );
   }
 
-  /// Convert [AppUser] to Firestore map
   Map<String, dynamic> toMap() {
     return {
       'firstName': firstName,
@@ -66,17 +67,16 @@ class AppUser {
       'photoUrl': photoUrl,
       'role': role,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
+      'attendance': attendance,
     };
   }
 
-  /// Display name with fallback to email or UID
   String get displayName {
     final fullName = '$firstName $lastName'.trim();
     if (fullName.isNotEmpty) return fullName;
     if (email.isNotEmpty) return email;
-    return uid; // fallback
+    return uid;
   }
 
-  /// 🔑 Quick role check
   bool get isAdmin => role.toLowerCase() == "admin";
 }

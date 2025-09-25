@@ -70,9 +70,15 @@ class _IntroScreenState extends State<IntroScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _pageController.dispose(); // ✅ prevent memory leak
+    super.dispose();
+  }
+
   // 🔥 Interpolates between background colors as user swipes
   Color _getBackgroundColor(double offset) {
-    final lowerIndex = offset.floor();
+    final lowerIndex = offset.floor().clamp(0, _backgroundColors.length - 1);
     final upperIndex = (lowerIndex + 1).clamp(0, _backgroundColors.length - 1);
     final t = offset - lowerIndex;
     return Color.lerp(
@@ -112,8 +118,8 @@ class _IntroScreenState extends State<IntroScreen> {
                     currentIndex = index;
                     swipeEnabled = false;
                   });
-                  // Avoid too fast swipe
-                  Future.delayed(const Duration(milliseconds: 800), () {
+                  // ⏳ shorter delay for smoother UX
+                  Future.delayed(const Duration(milliseconds: 400), () {
                     if (mounted) setState(() => swipeEnabled = true);
                   });
                 },

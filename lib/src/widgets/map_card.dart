@@ -1,14 +1,13 @@
 import 'dart:async';
+import 'dart:ui'; // 👈 for BackdropFilter
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'full_map_screen.dart'; // 👈 full screen map
 
-/// Map loading states
 enum MapLoadState { loading, ready, error }
 
-/// Wrapper for map status
 class MapStatus {
   const MapStatus._(this.state, {this.position, this.error});
 
@@ -23,13 +22,8 @@ class MapStatus {
   final String? error;
 }
 
-/// ✅ MapCard widget
-/// - If `fixedPosition` is provided → shows that location (admin/student detail view)
-/// - Otherwise → shows live location of the user (student view)
 class MapCard extends StatefulWidget {
   final ValueChanged<MapStatus>? onStatusChanged;
-
-  /// 👇 If provided, shows this fixed location
   final LatLng? fixedPosition;
 
   const MapCard({super.key, this.onStatusChanged, this.fixedPosition});
@@ -45,9 +39,8 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
   String? _errorMessage;
   Set<Marker> _markers = {};
 
-  /// Default fallback (Kingston, JA)
   static const CameraPosition _defaultPosition = CameraPosition(
-    target: LatLng(18.0179, -76.8099),
+    target: LatLng(18.0179, -76.8099), // Kingston, JA fallback
     zoom: 15.0,
   );
 
@@ -59,11 +52,9 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
     _emitStatus(const MapStatus.loading());
 
     if (widget.fixedPosition != null) {
-      // 👨‍🏫 Admin/student detail: show saved location
       _setFixedMarker(widget.fixedPosition!);
       _isLoading = false;
     } else {
-      // 👩‍🎓 Student: get live location
       _initializeLocation();
     }
   }
@@ -93,7 +84,6 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /// Initialize live location (student case)
   Future<void> _initializeLocation() async {
     try {
       setState(() {
@@ -207,19 +197,64 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
                 );
               },
             ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+          ),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GoogleMap(
+                  onMapCreated: _onMapCreated,
+                  initialCameraPosition: widget.fixedPosition != null
+                      ? CameraPosition(target: widget.fixedPosition!, zoom: 15)
+                      : _currentPosition != null
+                      ? CameraPosition(
+                          target: LatLng(
+                            _currentPosition!.latitude,
+                            _currentPosition!.longitude,
+                          ),
+                          zoom: 15.0,
+                        )
+                      : _defaultPosition,
+                  markers: _markers,
+                  myLocationEnabled: widget.fixedPosition == null,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  compassEnabled: false,
+                  liteModeEnabled: true,
+                ),
+              ),
+
+              // Tap → open full map
+              Positioned.fill(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const FullMapScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              if (_isLoading) const Center(child: CircularProgressIndicator()),
+
+              if (_errorMessage != null && !_isLoading)
+                Center(
+                  child: Text(
+                    _errorMessage!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+            ],
           ),
         ),
-
-        if (_isLoading) const Center(child: CircularProgressIndicator()),
-
-        if (_errorMessage != null && !_isLoading)
-          Center(
-            child: Text(
-              _errorMessage!,
-              style: const TextStyle(color: Colors.red),
-            ),
-          ),
-      ],
+      ),
     );
   }
 }

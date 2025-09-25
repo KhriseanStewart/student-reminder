@@ -59,6 +59,23 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _resetPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() => _errorMessage = "Enter your email to reset password.");
+      return;
+    }
+    try {
+      await AuthService.instance.sendPasswordReset(email);
+      setState(() => _errorMessage = "✅ Reset link sent to $email");
+    } on AuthException catch (e) {
+      setState(() => _errorMessage = e.message);
+    } catch (err) {
+      debugPrint("Reset password error: $err");
+      setState(() => _errorMessage = "Failed to send reset link.");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
