@@ -8,6 +8,7 @@ class StudentRow extends StatelessWidget {
   final VoidCallback onPresent;
   final VoidCallback onAbsent;
   final VoidCallback onEditReason;
+  final VoidCallback onDismiss;
 
   const StudentRow({
     super.key,
@@ -18,6 +19,7 @@ class StudentRow extends StatelessWidget {
     required this.onPresent,
     required this.onAbsent,
     required this.onEditReason,
+    required this.onDismiss,
   });
 
   Color _statusColor() {
@@ -27,7 +29,9 @@ class StudentRow extends StatelessWidget {
       case 'late':
         return Colors.orangeAccent;
       case 'absent':
-        return Colors.redAccent;
+        return Colors.grey;
+      case 'dismiss':
+        return Colors.red;
       default:
         return Colors.grey;
     }
@@ -41,9 +45,8 @@ class StudentRow extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.black,
+        // color: Colors.grey.shade700,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.deepPurple, width: 1.2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -132,16 +135,22 @@ class StudentRow extends StatelessWidget {
                 onTap: onPresent,
               ),
               _actionButton(
-                label: "Absent",
-                color: Colors.redAccent,
-                icon: Icons.cancel,
-                onTap: onAbsent,
-              ),
-              _actionButton(
                 label: "Late",
                 color: Colors.orangeAccent,
                 icon: Icons.timer,
                 onTap: onEditReason,
+              ),
+              _actionButton(
+                label: "Absent",
+                color: Colors.grey,
+                icon: Icons.cancel,
+                onTap: onAbsent,
+              ),
+              _actionButton(
+                label: "Dismiss",
+                color: Colors.red,
+                icon: Icons.timer,
+                onTap: onDismiss,
               ),
             ],
           ),

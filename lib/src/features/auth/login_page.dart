@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-//import 'package:students_reminder/src/models/app_user.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:lottie/lottie.dart';
 import 'package:students_reminder/src/services/auth_service.dart';
-import 'package:students_reminder/src/shared/main_layout.dart';
+import 'package:students_reminder/src/shared/routes.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -10,108 +11,51 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage>
-    with SingleTickerProviderStateMixin {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _passwordFocusNode = FocusNode();
-
-  bool _isLoading = false;
-  String? _errorMessage;
-  bool _isUnlocked = false;
-  bool _obscurePassword = true;
-
-  late AnimationController _shakeController;
-  late Animation<double> _shakeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _shakeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _shakeAnimation = Tween<double>(
-      begin: 0,
-      end: 16,
-    ).chain(CurveTween(curve: Curves.elasticIn)).animate(_shakeController);
-    _shakeController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        _shakeController.reset();
-      }
-    });
-
-    _emailController.addListener(() {
-      if (_errorMessage != null) setState(() => _errorMessage = null);
-    });
-    _passwordController.addListener(() {
-      if (_errorMessage != null) setState(() => _errorMessage = null);
-    });
-  }
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _passwordFocusNode.dispose();
-    _shakeController.dispose();
-    super.dispose();
-  }
+class _LoginPageState extends State<LoginPage> {
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _obscure = true;
+  bool _busy = false;
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+    setState(() => _busy = true);
+    try {
+      await AuthService.instance.login(_email.text.trim(), _password.text);
+      await navigateAfterLogin();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Login Failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  Future<void> navigateAfterLogin() async {
+    final user = AuthService.instance.currentUser;
+
+    if (user == null) return;
 
     try {
-      final appUser = await AuthService.instance.login(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
 
-      if (!mounted) return;
+      final role = snap.data()?['role'] as String?;
+      print('Fetched role: $role');
 
-      setState(() => _isUnlocked = true);
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      Navigator.pushReplacement(
-        context,
-
-
-      
-        MaterialPageRoute(builder: (_) => MainLayoutPage(user: appUser)),
-      );
-    } on AuthException catch (e) {
-      setState(() {
-        _errorMessage = e.message;
-        _isUnlocked = false;
-      });
-
-      _passwordController.clear();
-      FocusScope.of(context).requestFocus(_passwordFocusNode);
-
-      _shakeController.forward(from: 0.0);
-
-      try {
-        await AuthService.instance.logout();
-      } catch (err) {
-        debugPrint("Logout failed after invalid login: $err");
+      if (role == 'admin') {
+        Navigator.pushReplacementNamed(context, AppRoutes.admin);
+        return;
+      } else {
+        Navigator.pushReplacementNamed(context, AppRoutes.main);
       }
-    } catch (err) {
-      debugPrint("Unexpected login error: $err");
-
-      setState(() {
-        _errorMessage = "Unexpected error. Please try again.";
-        _isUnlocked = false;
-      });
-      _shakeController.forward(from: 0.0);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+    } catch (e) {
+      print('Error fetching role: $e');
+      Navigator.pushReplacementNamed(context, AppRoutes.main);
     }
   }
 
@@ -135,164 +79,144 @@ class _LoginPageState extends State<LoginPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Form(
-              key: _formKey,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.center,
+            colors: [Colors.blue, Colors.black],
+          ),
+        ),
+
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: SingleChildScrollView(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  AnimatedBuilder(
-                    animation: _shakeController,
-                    builder: (context, child) {
-                      final offset = _shakeAnimation.value;
-                      return Transform.translate(
-                        offset: Offset(offset, 0),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 500),
-                          transitionBuilder: (child, anim) =>
-                              ScaleTransition(scale: anim, child: child),
-                          child: Icon(
-                            _isUnlocked
-                                ? Icons.lock_open_rounded
-                                : Icons.lock_rounded,
-                            key: ValueKey(_isUnlocked),
-                            size: 80,
-                            color: _isUnlocked
-                                ? Colors.greenAccent
-                                : (_errorMessage != null
-                                    ? Colors.redAccent
-                                    : Colors.deepPurple),
-                          ),
+                  Container(
+                    height: 400,
+                    width: 400,
+                    child: Lottie.asset('assets/Student.json'),
+                  ),
+                  Text(
+                    'Student Reminder',
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.lime,
+                      shadows: [
+                        Shadow(
+                          offset: Offset(2, 2),
+                          blurRadius: 3,
+                          color: Colors.black45,
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 20),
-                  _buildTextField(
-                    controller: _emailController,
-                    hint: "Email",
-                    keyboard: TextInputType.emailAddress,
-                    validator: (val) {
-                      if (val == null || val.isEmpty) {
-                        return "Email required";
-                      }
-                      final regex = RegExp(r"^[\w\.-]+@[\w\.-]+\.\w+$");
-                      if (!regex.hasMatch(val)) {
-                        return "Invalid email address";
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _passwordController,
-                    hint: "Password",
-                    obscure: _obscurePassword,
-                    focusNode: _passwordFocusNode,
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                        color: Colors.white54,
+
+                  TextField(
+                    controller: _email,
+                    style: TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      labelStyle: TextStyle(color: Colors.white),
+                      floatingLabelStyle: TextStyle(color: Colors.blue),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.grey),
                       ),
-                      onPressed: () =>
-                          setState(() => _obscurePassword = !_obscurePassword),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.grey, width: 2),
+                      ),
+
+                      fillColor: Colors.transparent,
+                      border: OutlineInputBorder(),
+                      filled: true,
+                      hintStyle: TextStyle(color: Colors.white),
+                      hintText: "Enter your email",
+                      prefixIcon: Icon(Icons.email, color: Colors.blueGrey),
                     ),
-                    validator: (val) {
-                      if (val == null || val.isEmpty) {
-                        return "Password required";
-                      }
-                      if (val.length < 6) {
-                        return "Password must be at least 6 characters";
-                      }
-                      return null;
-                    },
+                    keyboardType: TextInputType.emailAddress,
                   ),
-                  const SizedBox(height: 24),
-                  if (_errorMessage != null)
-                    Text(
-                      _errorMessage!,
-                      style: const TextStyle(color: Colors.redAccent),
-                    ),
-                  const SizedBox(height: 16),
-                  _isLoading
-                      ? const CircularProgressIndicator(
-                          color: Colors.deepPurple,
-                        )
-                      : ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurple,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 32,
-                              vertical: 14,
-                            ),
-                          ),
-                          onPressed: _login,
-                          child: const Text(
-                            "Login",
-                            style: TextStyle(color: Colors.white, fontSize: 16),
-                          ),
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: _password,
+                    obscureText: _obscure,
+                    style: TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      prefixIcon: Icon(Icons.lock, color: Colors.blueGrey),
+                      fillColor: Colors.transparent,
+                      labelText: 'Password',
+                      labelStyle: TextStyle(color: Colors.white),
+                      floatingLabelStyle: TextStyle(color: Colors.blue),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.grey, width: 2),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.grey),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          color: Colors.lime,
+                          _obscure ? Icons.visibility_off : Icons.visibility,
                         ),
-                  TextButton(
-                    onPressed: _resetPassword,
-                    child: const Text(
-                      "Forgot Password?",
-                      style: TextStyle(color: Colors.lightBlueAccent),
+                        onPressed: () {
+                          setState(() {
+                            _obscure = !_obscure;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      gradient: LinearGradient(
+                        colors: [Colors.blue, Colors.purple],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                    ),
+                    child: ElevatedButton(
+                      onPressed: _busy ? null : _login,
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: Size(300, 50),
+                        backgroundColor: Colors.transparent,
+                        elevation: 5,
+                      ),
+                      child: _busy
+                          ? const CircularProgressIndicator()
+                          : const Text(
+                              'Login',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.white,
+                              ),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  TextButton(
+
+                  OutlinedButton(
                     onPressed: () =>
-                        Navigator.pushReplacementNamed(context, "/register"),
-                    child: const Text(
-                      "Don’t have an account? Register",
-                      style: TextStyle(color: Colors.amber),
-                    ),
+                        Navigator.pushNamed(context, AppRoutes.register),
+                    child: _busy
+                        ? const CircularProgressIndicator()
+                        : const Text(
+                            'No Account? Register',
+                            style: TextStyle(fontSize: 15, color: Colors.white),
+                          ),
                   ),
                 ],
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hint,
-    required FormFieldValidator<String> validator,
-    bool obscure = false,
-    TextInputType keyboard = TextInputType.text,
-    FocusNode? focusNode,
-    Widget? suffixIcon,
-  }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscure,
-      keyboardType: keyboard,
-      validator: validator,
-      focusNode: focusNode,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white54),
-        suffixIcon: suffixIcon,
-        enabledBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: Colors.deepPurple),
-        ),
-        focusedBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: Colors.amber),
-        ),
-        errorBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: Colors.redAccent),
-        ),
-        focusedErrorBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: Colors.redAccent),
         ),
       ),
     );

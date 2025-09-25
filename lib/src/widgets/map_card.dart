@@ -108,19 +108,15 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
         ),
       );
 
-      setState(() {
-        _currentPosition = position;
-        _markers = {
-          Marker(
-            markerId: const MarkerId('current_location'),
-            position: LatLng(position.latitude, position.longitude),
-            infoWindow: const InfoWindow(title: 'My Location'),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueBlue,
-            ),
+      if (_mapController != null) {
+        _mapController!.animateCamera(
+          duration: Duration(milliseconds: 300),
+          CameraUpdate.newLatLngZoom(
+            LatLng(position.latitude, position.longitude),
+            15,
           ),
-        };
-      });
+        );
+      }
 
       _emitStatus(MapStatus.ready(position));
     } catch (e) {
@@ -169,19 +165,37 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12), // 👈 blur
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.white.withOpacity(0.15),
-                Colors.white.withOpacity(0.05),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GoogleMap(
+            onMapCreated: _onMapCreated,
+            initialCameraPosition: widget.fixedPosition != null
+                ? CameraPosition(target: widget.fixedPosition!, zoom: 15)
+                : CameraPosition(
+                    target: LatLng(
+                      _currentPosition?.latitude ?? 0,
+                      _currentPosition?.longitude ?? 0,
+                    ),
+                    zoom: 15.0,
+                  ),
+            markers: _markers,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            liteModeEnabled: true,
+          ),
+        ),
+
+        // 👇 Tap → open full screen map
+        Positioned.fill(
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const FullMapScreen()),
+                );
+              },
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),

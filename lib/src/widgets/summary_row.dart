@@ -12,68 +12,65 @@ class SummaryRow extends StatelessWidget {
     final present = docs.where((d) => d['status'] == 'present').length;
     final late = docs.where((d) => d['status'] == 'late').length;
     final absent = docs.where((d) => d['status'] == 'absent').length;
+    final total = docs.length;
 
     Widget summaryCard({
       required String label,
       required int count,
-      required Color borderColor,
-      required IconData icon,
+      required Color numberColor,
     }) {
       return Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
-          margin: const EdgeInsets.symmetric(horizontal: 6),
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: borderColor, width: 1.5),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: borderColor, size: 22),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.white,
-                ),
+        child: Column(
+          children: [
+            // Count number with background
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: numberColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: numberColor.withOpacity(0.3)),
               ),
-              const SizedBox(height: 4),
-              Text(
-                "$count",
+              child: Text(
+                count.toString().padLeft(2, '0'),
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: borderColor,
+                  color: numberColor,
                 ),
               ),
-            ],
-          ),
+            ),
+            SizedBox(height: 8),
+            // Label
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       );
     }
 
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
+        summaryCard(
+          label: "Total",
+          count: total,
+          numberColor: Colors.blue.shade300,
+        ),
         summaryCard(
           label: "Present",
           count: present,
-          borderColor: Colors.greenAccent,
-          icon: Icons.check_circle,
-        ),
-        summaryCard(
-          label: "Late",
-          count: late,
-          borderColor: Colors.orangeAccent,
-          icon: Icons.access_time,
+          numberColor: Colors.green.shade300,
         ),
         summaryCard(
           label: "Absent",
           count: absent,
-          borderColor: Colors.redAccent,
-          icon: Icons.cancel,
+          numberColor: Colors.red.shade300,
         ),
       ],
     );
