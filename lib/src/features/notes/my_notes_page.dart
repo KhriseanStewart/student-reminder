@@ -58,7 +58,9 @@ class MyNotesPage extends ConsumerWidget {
                       context: context,
                       builder: (ctx) => AlertDialog(
                         title: const Text('Delete Note'),
-                        content: const Text('Are you sure you want to delete this note?'),
+                        content: const Text(
+                          'Are you sure you want to delete this note?',
+                        ),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(ctx, false),
@@ -72,7 +74,9 @@ class MyNotesPage extends ConsumerWidget {
                       ),
                     );
                     if (ok == true) {
-                      await ref.read(noteRepositoryProvider).deleteNote(uid, note.id);
+                      await ref
+                          .read(noteRepositoryProvider)
+                          .deleteNote(uid, note.id);
                     }
                   },
                   icon: const Icon(Icons.delete_outlined),

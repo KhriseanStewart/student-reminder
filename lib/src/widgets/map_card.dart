@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui'; // 👈 for BackdropFilter
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -108,9 +107,10 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
         ),
       );
 
+      _currentPosition = position;
+
       if (_mapController != null) {
         _mapController!.animateCamera(
-          duration: Duration(milliseconds: 300),
           CameraUpdate.newLatLngZoom(
             LatLng(position.latitude, position.longitude),
             15,
@@ -156,6 +156,8 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
           15,
         ),
       );
+    } else {
+      controller.moveCamera(CameraUpdate.newCameraPosition(_defaultPosition));
     }
   }
 
@@ -167,94 +169,57 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Stack(
       children: [
+        // Map
         Positioned.fill(
           child: GoogleMap(
             onMapCreated: _onMapCreated,
             initialCameraPosition: widget.fixedPosition != null
                 ? CameraPosition(target: widget.fixedPosition!, zoom: 15)
-                : CameraPosition(
+                : _currentPosition != null
+                ? CameraPosition(
                     target: LatLng(
-                      _currentPosition?.latitude ?? 0,
-                      _currentPosition?.longitude ?? 0,
+                      _currentPosition!.latitude,
+                      _currentPosition!.longitude,
                     ),
                     zoom: 15.0,
-                  ),
+                  )
+                : _defaultPosition,
             markers: _markers,
-            myLocationEnabled: true,
+            myLocationEnabled: widget.fixedPosition == null,
             myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            compassEnabled: false,
             liteModeEnabled: true,
           ),
         ),
 
-        // 👇 Tap → open full screen map
+        // Tap overlay → open full map
         Positioned.fill(
           child: Material(
             color: Colors.transparent,
             child: InkWell(
+              borderRadius: BorderRadius.circular(20),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const FullMapScreen()),
                 );
               },
             ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
-          ),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: GoogleMap(
-                  onMapCreated: _onMapCreated,
-                  initialCameraPosition: widget.fixedPosition != null
-                      ? CameraPosition(target: widget.fixedPosition!, zoom: 15)
-                      : _currentPosition != null
-                      ? CameraPosition(
-                          target: LatLng(
-                            _currentPosition!.latitude,
-                            _currentPosition!.longitude,
-                          ),
-                          zoom: 15.0,
-                        )
-                      : _defaultPosition,
-                  markers: _markers,
-                  myLocationEnabled: widget.fixedPosition == null,
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: false,
-                  compassEnabled: false,
-                  liteModeEnabled: true,
-                ),
-              ),
-
-              // Tap → open full map
-              Positioned.fill(
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const FullMapScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-
-              if (_isLoading) const Center(child: CircularProgressIndicator()),
-
-              if (_errorMessage != null && !_isLoading)
-                Center(
-                  child: Text(
-                    _errorMessage!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
-            ],
           ),
         ),
-      ),
+
+        // Loading spinner
+        if (_isLoading) const Center(child: CircularProgressIndicator()),
+
+        // Error message
+        if (_errorMessage != null && !_isLoading)
+          Center(
+            child: Text(
+              _errorMessage!,
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+      ],
     );
   }
 }

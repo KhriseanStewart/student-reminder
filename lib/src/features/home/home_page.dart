@@ -29,10 +29,9 @@ import 'package:students_reminder/src/features/calendar/calendar_page.dart';
 import 'package:students_reminder/src/features/settings/settings_page.dart'; // ✅ new
 
 class HomePage extends ConsumerStatefulWidget {
-  final AppUser user;
   final void Function(int)? onTabChange;
 
-  const HomePage({super.key, required this.user, this.onTabChange});
+  const HomePage({super.key, this.onTabChange});
 
   @override
   ConsumerState<HomePage> createState() => _HomePageState();
