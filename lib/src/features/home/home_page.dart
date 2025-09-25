@@ -39,7 +39,26 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
+  late final TextEditingController _searchController;
   String _query = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _searchController.addListener(() {
+      final newQuery = _searchController.text;
+      if (newQuery != _query) {
+        setState(() => _query = newQuery);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -79,11 +98,15 @@ class _HomePageState extends ConsumerState<HomePage> {
             (s) => s.uid == currentUid,
             orElse: () => students.first,
           );
-
           final q = _query.toLowerCase();
           final filtered = students.where((s) {
-            return s.displayName.toLowerCase().contains(q) ||
-                s.courseGroup.toLowerCase().contains(q);
+            // Safely handle null values
+            final name = s.displayName.toLowerCase();
+            final group = s.courseGroup.toLowerCase();
+            final email = (s.email ?? "").toLowerCase(); // if AppUser has email
+
+            // ✅ match across multiple fields
+            return name.contains(q) || group.contains(q) || email.contains(q);
           }).toList();
 
           final grouped = <String, List<AppUser>>{};
@@ -129,7 +152,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: SearchBarX(
+                        controller: _searchController,
                         onChanged: (val) => setState(() => _query = val),
+                        onSearchTap: () {
+                          debugPrint("Manual search for $_query");
+                        },
                       ),
                     ),
                   ),
