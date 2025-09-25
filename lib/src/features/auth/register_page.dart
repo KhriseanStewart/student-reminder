@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:students_reminder/src/services/auth_service.dart';
-import 'package:students_reminder/src/shared/main_layout.dart';
+import 'package:students_reminder/src/shared/routes.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -11,124 +10,176 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  final _courseGroupController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _passwordController = TextEditingController();
-
-  bool _isLoading = false;
-  String? _errorMessage;
+  final _first = TextEditingController();
+  final _last = TextEditingController();
+  final _email = TextEditingController();
+  final _phone = TextEditingController();
+  final _password = TextEditingController();
+  String _group = 'mobile';
+  bool _busy = false;
 
   Future<void> _register() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final cred = await AuthService.instance.register(
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        courseGroup: _courseGroupController.text.trim(),
-        email: _emailController.text.trim(),
-        phone: _phoneController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
-
-      final user = cred.user!;
-
-      if (user == null) {
-        throw Exception("Profile not found after registration.");
-      }
-
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
+    if (_first.text.trim().isEmpty ||
+        _last.text.trim().isEmpty ||
+        _email.text.trim().isEmpty ||
+        _phone.text.trim().isEmpty ||
+        _password.text.isEmpty) {
+      ScaffoldMessenger.of(
         context,
-        MaterialPageRoute(builder: (_) => MainLayoutPage(user: user)),
+      ).showSnackBar(SnackBar(content: Text('Please fill out all fields')));
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final user = await AuthService.instance.register(
+        firstName: _first.text.trim(),
+        lastName: _last.text.trim(),
+        courseGroup: _group,
+        email: _email.text.trim(),
+        phone: _phone.text.trim(),
+        password: _password.text,
       );
-    } on FirebaseAuthException catch (e) {
-      setState(() => _errorMessage = e.message ?? "Registration failed");
+
+      if (mounted) Navigator.pushReplacementNamed(context, AppRoutes.main);
     } catch (e) {
-      setState(() => _errorMessage = e.toString());
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Registration failed: $e')));
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
+      // 🖼 Background Image with gradient
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.blue.shade900, Colors.black87],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          image: DecorationImage(
+            image: AssetImage("assets/images/computer_bg.png"),
+            fit: BoxFit.cover,
+            colorFilter: ColorFilter.mode(
+              Colors.black.withOpacity(0.5),
+              BlendMode.darken,
+            ),
+          ),
+        ),
         child: Center(
           child: SingleChildScrollView(
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.person_add,
-                  size: 80,
-                  color: Colors.deepPurple,
-                ),
-                const SizedBox(height: 20),
-                _buildTextField(_firstNameController, "First Name"),
-                const SizedBox(height: 12),
-                _buildTextField(_lastNameController, "Last Name"),
-                const SizedBox(height: 12),
-                _buildTextField(_courseGroupController, "Course Group"),
-                const SizedBox(height: 12),
-                _buildTextField(
-                  _emailController,
-                  "Email",
-                  keyboard: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 12),
-                _buildTextField(
-                  _phoneController,
-                  "Phone",
-                  keyboard: TextInputType.phone,
-                ),
-                const SizedBox(height: 12),
-                _buildTextField(_passwordController, "Password", obscure: true),
-                const SizedBox(height: 24),
-
-                if (_errorMessage != null)
-                  Text(
-                    _errorMessage!,
-                    style: const TextStyle(color: Colors.redAccent),
-                  ),
-
-                const SizedBox(height: 16),
-                _isLoading
-                    ? const CircularProgressIndicator(color: Colors.deepPurple)
-                    : ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 14,
+            padding: EdgeInsets.all(20),
+            child: Card(
+              elevation: 8,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              color: const Color.fromARGB(255, 28, 3, 66).withOpacity(0.9),
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    Text(
+                      'Student Registration',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: const Color.fromARGB(255, 225, 226, 228),
+                      ),
+                    ),
+                    SizedBox(height: 20),
+                    _buildTextField(_first, "First name"),
+                    SizedBox(height: 12),
+                    _buildTextField(_last, "Last name"),
+                    SizedBox(height: 12),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'mobile', label: Text('Mobile')),
+                        ButtonSegment(
+                          value: 'web',
+                          label: Text(
+                            'Web',
+                            style: TextStyle(color: Colors.grey),
                           ),
                         ),
-                        onPressed: _register,
-                        child: const Text(
-                          "Register",
-                          style: TextStyle(color: Colors.white, fontSize: 16),
+                      ],
+                      selected: {_group},
+                      onSelectionChanged: (sel) =>
+                          setState(() => _group = sel.first),
+                    ),
+                    SizedBox(height: 12),
+                    _buildTextField(
+                      _email,
+                      "Email address",
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    SizedBox(height: 12),
+                    _buildTextField(
+                      _phone,
+                      "Phone #",
+                      keyboardType: TextInputType.phone,
+                    ),
+                    SizedBox(height: 12),
+                    _buildTextField(_password, "Password", obscure: true),
+                    SizedBox(height: 20),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color.fromARGB(255, 39, 67, 95),
+                        foregroundColor: const Color.fromARGB(
+                          255,
+                          245,
+                          242,
+                          248,
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: 14,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () =>
-                      Navigator.pushReplacementNamed(context, "/login"),
-                  child: const Text(
-                    "Already have an account? Login",
-                    style: TextStyle(color: Colors.amber),
-                  ),
+                      onPressed: _busy ? null : _register,
+                      child: _busy
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              'Create Account',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    // 👇 Text button to go back to login
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pushReplacementNamed(
+                          context,
+                          AppRoutes.login,
+                        );
+                      },
+                      child: Text(
+                        "Already have an account? Log in",
+                        style: TextStyle(
+                          color: Colors.blue.shade200,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -138,23 +189,27 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Widget _buildTextField(
     TextEditingController controller,
-    String hint, {
+    String label, {
     bool obscure = false,
-    TextInputType keyboard = TextInputType.text,
+    TextInputType? keyboardType,
   }) {
     return TextField(
       controller: controller,
       obscureText: obscure,
-      keyboardType: keyboard,
-      style: const TextStyle(color: Colors.white),
+      keyboardType: keyboardType,
+      style: TextStyle(color: Colors.black87),
       decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white54),
-        enabledBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: Colors.deepPurple),
+        labelText: label,
+        labelStyle: TextStyle(
+          color: Colors.black87,
+          fontWeight: FontWeight.w500,
         ),
-        focusedBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: Colors.amber),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.9),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.blue.shade700, width: 2),
         ),
       ),
     );
