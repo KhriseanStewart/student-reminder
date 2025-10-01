@@ -89,7 +89,8 @@ class _RegisterPageState extends State<RegisterPage> {
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: const Color.fromARGB(255, 225, 226, 228),
+                        color:
+                         const Color.fromARGB(255, 225, 226, 228),
                       ),
                     ),
                     SizedBox(height: 20),
@@ -99,19 +100,34 @@ class _RegisterPageState extends State<RegisterPage> {
                     SizedBox(height: 12),
                     SegmentedButton<String>(
                       segments: const [
-                        ButtonSegment(value: 'mobile', label: Text('Mobile')),
+                        ButtonSegment(
+                          value: 'mobile', 
+                           label: Text('Mobile',
+                           )
+                        ),
                         ButtonSegment(
                           value: 'web',
                           label: Text(
                             'Web',
-                            style: TextStyle(color: Colors.grey),
                           ),
                         ),
                       ],
                       selected: {_group},
                       onSelectionChanged: (sel) =>
                           setState(() => _group = sel.first),
+                      style: ButtonStyle(
+                        foregroundColor:
+                         MaterialStateProperty.resolveWith<Color>(
+                          (Set<MaterialState> states){
+                            if (states.contains(MaterialState.selected)) {
+                              return Colors.black;
+                            }
+                              return Colors.blue;
+                          }
+                         ),
+                      ) 
                     ),
+                    
                     SizedBox(height: 12),
                     _buildTextField(
                       _email,
@@ -125,7 +141,9 @@ class _RegisterPageState extends State<RegisterPage> {
                       keyboardType: TextInputType.phone,
                     ),
                     SizedBox(height: 12),
-                    _buildTextField(_password, "Password", obscure: true),
+                    _buildTextField(_password, "Password", 
+                    obscure: true),
+
                     SizedBox(height: 20),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
@@ -160,7 +178,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             ),
                     ),
                     const SizedBox(height: 12),
-                    // 👇 Text button to go back to login
+                    // Text button to go back to login
                     TextButton(
                       onPressed: () {
                         Navigator.pushReplacementNamed(

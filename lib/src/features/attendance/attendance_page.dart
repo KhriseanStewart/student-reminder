@@ -804,7 +804,7 @@ class _AttendancePageState extends State<AttendancePage>
                 MaterialPageRoute(builder: (context) => AttendanceHistory()),
               );
             },
-            icon: Icon(Icons.refresh_outlined),
+            icon: Icon(Icons.history),
           ),
         ],
       ),
