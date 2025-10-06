@@ -1,47 +1,36 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:students_reminder/src/core/utils/distance_utils.dart'
+    as distance_utils;
 import 'package:students_reminder/src/features/attendance/attendance_history.dart';
-//import 'package:geolocator/geolocator.dart';
-
-import '../../services/attendance_repository.dart';
-import '../../services/location_service.dart';
-
-// ✅ Reusable UI widgets
-import '../../widgets/clock_fab.dart';
-import '../../widgets/status_strip.dart';
-import '../../widgets/map_card.dart';
-import '../../widgets/late_reason_dialog.dart';
+import 'package:students_reminder/src/features/checkin/check_in_controller.dart';
+import 'package:students_reminder/src/features/checkin/check_result_feedback.dart';
+import 'package:students_reminder/src/features/checkin/session_context.dart';
+import 'package:students_reminder/src/models/attendance_record.dart';
+import 'package:students_reminder/src/models/geofence_incident.dart';
+import 'package:students_reminder/src/providers/incident_providers.dart';
+import 'package:students_reminder/src/widgets/clock_fab.dart';
+import 'package:students_reminder/src/widgets/map_card.dart';
+import 'package:students_reminder/src/widgets/status_strip.dart';
+import 'package:students_reminder/src/widgets/late_reason_dialog.dart';
 
 const _cardRadius = 20.0;
-const bool _bypassTimeWindowForTesting = false;
 
-enum _SnackKind { success, warning, error }
-
-class AttendancePage extends StatefulWidget {
+class AttendancePage extends ConsumerStatefulWidget {
   const AttendancePage({super.key});
+
   @override
-  State<AttendancePage> createState() => _AttendancePageState();
+  ConsumerState<AttendancePage> createState() => _AttendancePageState();
 }
 
-class _AttendancePageState extends State<AttendancePage>
+class _AttendancePageState extends ConsumerState<AttendancePage>
     with WidgetsBindingObserver {
-  final _repo = AttendanceRepository();
-  final _loc = LocationService();
-
-  bool _isClockedIn = false;
-  AttendanceDay? _today;
-  List<AttendanceDay> _recentDays = const [];
-  StreamSubscription<AttendanceDay?>? _todaySub;
-  StreamSubscription<List<AttendanceDay>>? _historySub;
   Timer? _clockTicker;
   DateTime _now = DateTime.now();
-
-  final DateFormat _clockFormat = DateFormat('h:mm a');
-  final DateFormat _dayFormat = DateFormat('EEE, MMM d');
-  final DateFormat _storageFormat = DateFormat('yyyy-MM-dd');
-
   MapStatus _mapStatus = const MapStatus.loading();
 
   @override
@@ -49,35 +38,10 @@ class _AttendancePageState extends State<AttendancePage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startClock();
-    _listenToday();
-    _listenRecent();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {}
-  }
-
-  void _listenToday() {
-    _todaySub?.cancel();
-    _todaySub = _repo.watchToday().listen((day) {
-      setState(() {
-        _today = day;
-        _isClockedIn = day?.clockInAt != null && day?.clockOutAt == null;
-      });
-    });
-  }
-
-  void _listenRecent() {
-    _historySub?.cancel();
-    _historySub = _repo.watchRecentDays(limit: 10).listen((days) {
-      setState(() => _recentDays = days);
-    });
   }
 
   void _startClock() {
     _clockTicker?.cancel();
-    _now = DateTime.now();
     _clockTicker = Timer.periodic(const Duration(seconds: 30), (_) {
       setState(() => _now = DateTime.now());
     });
@@ -85,229 +49,306 @@ class _AttendancePageState extends State<AttendancePage>
 
   @override
   void dispose() {
-    _todaySub?.cancel();
-    _historySub?.cancel();
-    _clockTicker?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    _clockTicker?.cancel();
     super.dispose();
   }
 
-  // --- Status Colors + Icons ---
-  Color _statusColor(String? status) {
-    if (status == null) {
-      return Colors.grey; // No status yet
-    }
+  Future<void> _performCheck({required bool isCheckIn}) async {
+    final now = DateTime.now();
+    final isRestrictedDay =
+        now.weekday == DateTime.wednesday || now.weekday == DateTime.thursday;
 
-    switch (status) {
-      case 'early':
-        return const Color(0xFF2ECC71); // Green
-      case 'late':
-        return const Color(0xFFF39C12); // Orange
-      case 'present':
-        return const Color(0xFF3498DB); // Blue
-      case 'absent':
-        return const Color(0xFFE74C3C); // Red
-      default:
-        return Colors.purple; // Fallback for unknown statuses
-    }
-  }
+    const stonyHillLat = 18.0937;
+    const stonyHillLng = -76.7880;
+    const allowedRadiusMeters = 200;
 
-  IconData _statusIcon(String? status) {
-    switch (status) {
-      case 'early':
-        return Icons.check_circle;
-      case 'late':
-        return Icons.schedule;
-      case 'absent':
-        return Icons.cancel;
-      default:
-        return Icons.radio_button_checked;
-    }
-  }
+    if (isCheckIn && isRestrictedDay) {
+      final pos = _mapStatus.position;
+      bool isAtStonyHill = false;
+      String locationLabel = 'Unknown location';
 
-  Widget _buildStatusBadge(String? status) {
-    final color = _statusColor(status);
-    final icon = _statusIcon(status);
-    final label = (status ?? 'No status').toUpperCase();
+      if (pos != null) {
+        final distance = distance_utils.haversineDistanceMeters(
+          lat1: pos.latitude,
+          lon1: pos.longitude,
+          lat2: stonyHillLat,
+          lon2: stonyHillLng,
+        );
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: color,
+        locationLabel = '${distance_utils.prettyDistance(distance)} away';
+        isAtStonyHill = distance <= allowedRadiusMeters;
+      } else {
+        isAtStonyHill = false;
+        locationLabel = 'Location unavailable';
+      }
+
+      if (!isAtStonyHill) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Outside designated area'),
+            content: Text(
+              'Today is restricted to Stony Hill campus. Your device is $locationLabel from Stony Hill.\n\nDo you still want to clock in?',
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- Time Helpers ---
-  String _formatTime(DateTime? value) =>
-      value == null ? '--' : _clockFormat.format(value);
-
-  String _formatDuration(Duration duration) {
-    final value = duration.isNegative ? duration.abs() : duration;
-    final hours = value.inHours;
-    final minutes = value.inMinutes.remainder(60);
-    return hours > 0
-        ? '${hours}h ${minutes.toString().padLeft(2, '0')}m'
-        : '${minutes}m';
-  }
-
-  Duration? _clockedDuration() {
-    final clockIn = _today?.clockInAt;
-    if (clockIn == null) return null;
-    final end = _today?.clockOutAt ?? _now;
-    return end.difference(clockIn);
-  }
-
-  // ✅ Summary Row
-  Widget _buildSummaryRow({
-    required IconData icon,
-    required String label,
-    required String value,
-    Color? valueColor,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: isDark ? Colors.white60 : Colors.black54),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white70 : Colors.black54,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color:
-                        valueColor ?? (isDark ? Colors.white : Colors.black87),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ✅ Elapsed Row
-  Widget _buildElapsedRow(Duration duration) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Row(
-      children: [
-        Icon(Icons.timer, size: 22, color: Colors.indigo.shade400),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Elapsed time',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.white70 : Colors.black54,
-                ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
               ),
-              const SizedBox(height: 2),
-              Text(
-                _formatDuration(duration),
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.indigo.shade400,
-                ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Clock in anyway'),
               ),
             ],
           ),
-        ),
-      ],
-    );
+        );
+
+        if (proceed != true) {
+          _showSnack('Clock-in cancelled (outside Stony Hill).');
+          return;
+        }
+      }
+    }
+
+    final session = ref.read(sessionContextProvider);
+    final controller = ref.read(checkInControllerProvider.notifier);
+
+    try {
+      final cutoff = session.scheduledStart.add(
+        Duration(minutes: session.graceMinutes),
+      );
+
+      if (isCheckIn && now.isAfter(cutoff)) {
+        final reason = await showLateReasonDialog(context);
+        if (reason == null || reason.trim().isEmpty) {
+          _showSnack('Clock-in cancelled (no reason provided).');
+          return;
+        }
+
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .collection('attendance_records')
+              .add({
+                'timestamp': now,
+                'status': 'late',
+                'reason': reason,
+                'classId': session.classId,
+                'sessionId': session.sessionId,
+              });
+        }
+
+        _showSnack('Late reason saved: $reason');
+      }
+
+      final outcome = isCheckIn
+          ? await controller.checkIn(
+              sessionId: session.sessionId,
+              classId: session.classId,
+              scheduledStart: session.scheduledStart,
+              graceMinutes: session.graceMinutes,
+            )
+          : await controller.checkOut(
+              sessionId: session.sessionId,
+              classId: session.classId,
+              scheduledStart: session.scheduledStart,
+              graceMinutes: session.graceMinutes,
+            );
+
+      if (!mounted) return;
+      showCheckResultFeedback(context, outcome);
+    } on CheckInException catch (err) {
+      _showSnack(err.message);
+    } catch (_) {
+      _showSnack(
+        'Unable to ${isCheckIn ? 'clock in' : 'clock out'}. Please try again.',
+      );
+    }
   }
 
-  // ✅ Late Reason Pill
-  Widget _buildLateReason(String reason) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
-        borderRadius: BorderRadius.circular(14),
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      );
+  }
+
+  void _handleMapStatusChanged(MapStatus status) {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _mapStatus = status);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(body: Center(child: Text('No user signed in.')));
+    }
+
+    final checkState = ref.watch(checkInControllerProvider);
+    final attendanceAsync = ref.watch(attendanceHistoryProvider(user.uid));
+    final incidentsAsync = ref.watch(studentIncidentsProvider(user.uid));
+
+    return attendanceAsync.when(
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (err, _) => Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text('Failed to load attendance.\n$err'),
+          ),
+        ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.flag, color: Colors.orange, size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Late reason',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.orange,
+      data: (records) {
+        final todaySnapshot = _snapshotForDay(records, DateTime.now());
+        final groupedDays = _groupByDay(records);
+        final incidentsWidget = incidentsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (err, _) => Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text('Failed to load incidents.\n$err'),
+          ),
+          data: (incidents) => _buildIncidentSection(incidents),
+        );
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Attendance'),
+            actions: [
+              IconButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AttendanceHistory(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.history),
+              ),
+            ],
+          ),
+          body: SafeArea(
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: StatusStrip(status: todaySnapshot.currentStatus?.name),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverToBoxAdapter(
+                    child: _buildOverviewSection(todaySnapshot),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  reason,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
+                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      _buildTodaySummary(todaySnapshot),
+                      const SizedBox(height: 16),
+                      _buildHistorySection(groupedDays),
+                      const SizedBox(height: 16),
+                      _buildWeeklyStreaks(records),
+                      const SizedBox(height: 16),
+                      incidentsWidget,
+                      const SizedBox(height: 120),
+                    ]),
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
+          floatingActionButton: ClockFab(
+            isClockedIn: todaySnapshot.isClockedIn,
+            isProcessing: checkState.isLoading,
+            onClockIn: () => _performCheck(isCheckIn: true),
+            onClockOut: () => _performCheck(isCheckIn: false),
+          ),
+        );
+      },
     );
   }
 
-  // ✅ Map + Pills
-  Widget _buildOverviewSection() {
+  DailySnapshot _snapshotForDay(List<AttendanceRecord> records, DateTime day) {
+    final sameDay = records.where((r) => _isSameDay(r.checkedAt, day)).toList();
+    sameDay.sort((a, b) => a.checkedAt.compareTo(b.checkedAt));
+
+    AttendanceRecord? lastCheckIn;
+    AttendanceRecord? lastCheckOut;
+
+    for (final record in sameDay) {
+      if (record.direction == AttendanceDirection.checkIn) {
+        lastCheckIn = record;
+      } else {
+        lastCheckOut = record;
+      }
+    }
+
+    AttendanceRecord? latest;
+    if (lastCheckIn != null) {
+      latest = lastCheckIn;
+    }
+    if (lastCheckOut != null &&
+        (latest == null || lastCheckOut.checkedAt.isAfter(latest.checkedAt))) {
+      latest = lastCheckOut;
+    }
+
+    final isClockedIn =
+        lastCheckIn != null &&
+        (lastCheckOut == null ||
+            lastCheckIn.checkedAt.isAfter(lastCheckOut.checkedAt));
+
+    return DailySnapshot(
+      lastCheckIn: lastCheckIn,
+      lastCheckOut: lastCheckOut,
+      currentStatus: latest?.status,
+      isClockedIn: isClockedIn,
+      records: sameDay,
+    );
+  }
+
+  Map<DateTime, List<AttendanceRecord>> _groupByDay(
+    List<AttendanceRecord> records,
+  ) {
+    final map = <DateTime, List<AttendanceRecord>>{};
+    for (final record in records) {
+      final key = DateTime(
+        record.checkedAt.year,
+        record.checkedAt.month,
+        record.checkedAt.day,
+      );
+      map.putIfAbsent(key, () => []).add(record);
+    }
+    return map;
+  }
+
+  Widget _buildOverviewSection(DailySnapshot snapshot) {
+    final lastLocation =
+        snapshot.lastCheckIn?.actualLocation ??
+        snapshot.lastCheckOut?.actualLocation;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 640;
+
         final pills = SizedBox(
           width: isWide ? 200 : double.infinity,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildLocationPill(),
+              _buildLocationPill(lastLocation),
               const SizedBox(height: 12),
-              _buildStatusSummaryPill(),
+              _buildStatusSummaryPill(snapshot),
             ],
           ),
         );
@@ -321,7 +362,7 @@ class _AttendancePageState extends State<AttendancePage>
           clipBehavior: Clip.antiAlias,
           child: SizedBox(
             height: 300,
-            child: MapCard(onStatusChanged: _handleMapStatusChanged,),
+            child: MapCard(onStatusChanged: _handleMapStatusChanged),
           ),
         );
 
@@ -342,85 +383,57 @@ class _AttendancePageState extends State<AttendancePage>
     );
   }
 
-  void _handleMapStatusChanged(MapStatus status) {
-    if (!mounted) return;
-    final scheduler = SchedulerBinding.instance;
-    if (scheduler.schedulerPhase == SchedulerPhase.idle ||
-        scheduler.schedulerPhase == SchedulerPhase.postFrameCallbacks) {
-      setState(() => _mapStatus = status);
-    } else {
-      scheduler.addPostFrameCallback((_) {
-        if (mounted) setState(() => _mapStatus = status);
-      });
-    }
-  }
+  Widget _buildLocationPill(GeoSample? location) {
+    String text;
+    Color pillColor;
+    Color textColor;
+    String emoji;
 
-  Widget _buildLocationPill() {
-    String text; // Message inside the pill
-    Color pillColor; // Background color of the pill
-    Color textColor; // Text + border color
-    String emoji; // Emoji icon depending on state
-
-    // Decide look based on map status
     switch (_mapStatus.state) {
       case MapLoadState.ready:
-        // If map is ready, show coordinates if available
-        final pos = _mapStatus.position;
-        final coords = pos != null
-            ? 'Lat ${pos.latitude.toStringAsFixed(4)}, Lng ${pos.longitude.toStringAsFixed(4)}'
-            : 'Location ready';
-
-        text = coords;
-        pillColor = Colors.green.shade50; // light green background
-        textColor = Colors.green.shade700; // dark green text
-        emoji = "📍"; // pin emoji
+        if (location != null) {
+          text =
+              'Lat ${location.latitude.toStringAsFixed(4)}, Lng ${location.longitude.toStringAsFixed(4)}';
+        } else if (_mapStatus.position != null) {
+          text =
+              'Lat ${_mapStatus.position!.latitude.toStringAsFixed(4)}, Lng ${_mapStatus.position!.longitude.toStringAsFixed(4)}';
+        } else {
+          text = 'Location ready';
+        }
+        pillColor = Colors.green.shade50;
+        textColor = Colors.green.shade700;
+        emoji = '📍';
         break;
-
       case MapLoadState.error:
-        // If error, show error message
-        text = 'Location error: ${_mapStatus.error ?? "Unknown"}';
-        pillColor = Colors.red.shade50; // light red background
-        textColor = Colors.red.shade700; // dark red text
-        emoji = "❌"; // cross emoji
+        text = 'Location error: ${_mapStatus.error ?? 'Unknown'}';
+        pillColor = Colors.red.shade50;
+        textColor = Colors.red.shade700;
+        emoji = '❌';
         break;
-
       case MapLoadState.loading:
-
-        // While loading, show waiting message
         text = 'Detecting location…';
-        pillColor = Colors.grey.shade200; // light gray background
-        textColor = Colors.grey.shade600; // medium gray text
-        emoji = "⏳"; // hourglass emoji
+        pillColor = Colors.grey.shade200;
+        textColor = Colors.grey.shade600;
+        emoji = '⏳';
         break;
     }
 
-    // Build the styled pill UI
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: pillColor, // background color
-        borderRadius: BorderRadius.circular(30), // rounded pill shape
-        border: Border.all(
-          // thin border
-          color: textColor.withValues(alpha: 0.4),
-          width: 1.2,
-        ),
+        color: pillColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: textColor.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Emoji on the left
-          Text(emoji, style: const TextStyle(fontSize: 20)),
+          Text(emoji, style: const TextStyle(fontSize: 16)),
           const SizedBox(width: 8),
-          // Status text (wraps if too long)
-          Flexible(
+          Expanded(
             child: Text(
               text,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: textColor,
-              ),
+              style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -428,69 +441,40 @@ class _AttendancePageState extends State<AttendancePage>
     );
   }
 
-  Widget _buildStatusSummaryPill() {
-    final color = _statusColor(_today?.status);
-    final icon = _statusIcon(_today?.status);
-    final statusLabel = (_today?.status ?? 'No status').toUpperCase();
+  Widget _buildStatusSummaryPill(DailySnapshot snapshot) {
+    final status = snapshot.currentStatus ?? distance_utils.AttStatus.present;
+    final statusLabel = _statusLabel(status);
+    final color = _statusColor(status);
+    final now = TimeOfDay.fromDateTime(_now).format(context);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: 8),
-          Text(
-            "Today's Status: $statusLabel",
-            style: TextStyle(color: color, fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ✅ Window Banner (fixed missing method)
-  Widget _buildWindowBanner() {
-    final now = _now;
-    final start = DateTime(now.year, now.month, now.day, 8, 0);
-    final end = DateTime(now.year, now.month, now.day, 16, 0);
-    String message;
-    IconData icon;
-    Color accent;
-
-    if (now.isBefore(start)) {
-      icon = Icons.upcoming;
-      accent = Colors.blue.shade600;
-      message = 'Clock-in opens in ${_formatDuration(start.difference(now))}';
-    } else if (now.isAfter(end)) {
-      icon = Icons.lock_clock;
-      accent = Colors.grey.shade600;
-      message = 'Clock-in closed at ${_clockFormat.format(end)}';
-    } else {
-      icon = Icons.schedule;
-      accent = Colors.green.shade600;
-      message = 'Clock-in closes in ${_formatDuration(end.difference(now))}';
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
-          Icon(icon, color: accent),
-          const SizedBox(width: 12),
+          Icon(Icons.bolt, color: color),
+          const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              message,
-              style: TextStyle(color: accent, fontWeight: FontWeight.w600),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  statusLabel,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Last checked ${now.toLowerCase()}',
+                  style: TextStyle(
+                    color: color.withValues(alpha: 0.7),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -498,114 +482,16 @@ class _AttendancePageState extends State<AttendancePage>
     );
   }
 
-  // ✅ ClockIn + ClockOut
-  Future<void> _handleClockIn() async {
-    final now = DateTime.now();
-
-    // Enforce clock-in time window: 8:00 AM – 4:00 PM
-    if (!_bypassTimeWindowForTesting && (now.hour < 8 || now.hour >= 16)) {
-      _showSnack(
-        '⚠️ Clock in only allowed between 8:00–16:00',
-        _SnackKind.warning,
-      );
-      return;
-    }
-
-    final hasPerm = await _loc.ensurePermission();
-    if (!hasPerm) {
-      _showSnack('⚠️ Location permission required', _SnackKind.warning);
-      return;
-    }
-
-    final pos = await _loc.getCurrentPosition();
-
-    // Late reason only if after 8:30
-    String? lateReason;
-    if (now.hour > 8 || (now.hour == 8 && now.minute > 30)) {
-
-    if (!mounted) return;
-      lateReason = await showLateReasonDialog(context);
-
-      if (lateReason == null || lateReason.trim().isEmpty) return;
-    }
-
-    // ✅ Let repository calculate status
-    await _repo.clockIn(
-      lat: pos.latitude,
-      lng: pos.longitude,
-      lateReason: lateReason,
-    );
-
-    _showSnack('✅ Clocked in successfully', _SnackKind.success);
-  }
-
-  Future<void> _handleClockOut() async {
-    if (!_isClockedIn) return;
-    final day = _today;
-    if (day == null || day.clockInAt == null) return;
-
-    final hasPerm = await _loc.ensurePermission();
-    if (!hasPerm) {
-      _showSnack(
-        '⚠️ Location permission required to clock out.',
-        _SnackKind.warning,
-      );
-      return;
-    }
-
-    final pos = await _loc.getCurrentPosition();
-    await _repo.clockOut(lat: pos.latitude, lng: pos.longitude);
-
-    if (!mounted) return;
-
-    _showSnack('✅ Clocked out. Have a good rest!', _SnackKind.success);
-  }
-
-  void _showSnack(String message, _SnackKind kind) {
-    IconData icon;
-    Color color;
-
-    switch (kind) {
-      case _SnackKind.success:
-        icon = Icons.check_circle_outline;
-        color = const Color(0xFF27AE60);
-        break;
-      case _SnackKind.warning:
-        icon = Icons.schedule;
-        color = const Color(0xFFF39C12);
-        break;
-      case _SnackKind.error:
-        icon = Icons.close_rounded;
-        color = const Color(0xFFC0392B);
-        break;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: color,
-        content: Row(
-          children: [
-            Icon(icon, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ✅ Today’s Summary
-  Widget _buildTodaySummary() {
-    final day = _today;
-    final duration = _clockedDuration();
-    final lateReason = day?.lateReason?.trim();
+  Widget _buildTodaySummary(DailySnapshot snapshot) {
+    final clockIn = snapshot.lastCheckIn?.checkedAt;
+    final clockOut = snapshot.lastCheckOut?.checkedAt;
+    final duration = _computeDuration(clockIn, clockOut);
 
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(_cardRadius),
       ),
-      elevation: 6,
+      elevation: 4,
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -613,71 +499,48 @@ class _AttendancePageState extends State<AttendancePage>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _dayFormat.format(_now),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white70
-                              : Colors.black54,
-                        ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      DateFormat('EEEE, MMM d').format(_now),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _clockFormat.format(_now),
-                        style: const TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      snapshot.isClockedIn
+                          ? 'Currently clocked in'
+                          : 'Not clocked in',
+                      style: TextStyle(
+                        color: snapshot.isClockedIn
+                            ? Colors.green.shade600
+                            : Colors.red.shade600,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                _buildStatusBadge(day?.status),
               ],
             ),
-            const SizedBox(height: 16),
-
-            _buildWindowBanner(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             _buildSummaryRow(
               icon: Icons.login,
               label: 'Clocked in',
-              value: day?.clockInAt != null
-                  ? _formatTime(day?.clockInAt)
-                  : 'Not yet',
+              value: clockIn != null ? _formatTime(clockIn) : 'Not yet',
             ),
-            const Divider(height: 20),
+            const Divider(height: 24),
             _buildSummaryRow(
               icon: Icons.logout,
               label: 'Clocked out',
-              value: day?.clockOutAt != null
-                  ? _formatTime(day?.clockOutAt)
-                  : 'Not yet',
+              value: clockOut != null ? _formatTime(clockOut) : 'Not yet',
             ),
             if (duration != null) ...[
-              const Divider(height: 20),
+              const Divider(height: 24),
               _buildElapsedRow(duration),
-            ],
-            if (day?.clockInLat != null && day?.clockInLng != null) ...[
-              const Divider(height: 20),
-              _buildSummaryRow(
-                icon: Icons.location_on,
-                label: 'Clock-in location',
-                value:
-                    '${day!.clockInLat!.toStringAsFixed(5)}, ${day.clockInLng!.toStringAsFixed(5)}',
-              ),
-            ],
-
-            if (lateReason != null && lateReason.isNotEmpty) ...[
-              const Divider(height: 20),
-              _buildLateReason(lateReason),
             ],
           ],
         ),
@@ -685,79 +548,112 @@ class _AttendancePageState extends State<AttendancePage>
     );
   }
 
-  // ✅ History section
-  Widget _buildHistorySection() {
-    if (_recentDays.isEmpty) {
+  Widget _buildSummaryRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 22, color: Colors.indigo.shade400),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildElapsedRow(Duration duration) {
+    return Row(
+      children: [
+        Icon(Icons.timer, size: 22, color: Colors.indigo.shade400),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Elapsed time',
+              style: TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _formatDuration(duration),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHistorySection(
+    Map<DateTime, List<AttendanceRecord>> groupedDays,
+  ) {
+    if (groupedDays.isEmpty) {
       return Card(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(_cardRadius),
         ),
         elevation: 4,
         margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: const [
-              Icon(Icons.history, size: 40, color: Colors.grey),
-              SizedBox(height: 12),
-              Text(
-                'Your attendance history will appear here once you start clocking in.',
-              ),
-            ],
+        child: const Padding(
+          padding: EdgeInsets.all(20),
+          child: Text(
+            'Your attendance history will appear here once you start clocking in.',
           ),
         ),
       );
     }
 
+    final entries = groupedDays.entries.toList()
+      ..sort((a, b) => b.key.compareTo(a.key));
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: _recentDays.map((day) {
+      children: entries.map((entry) {
+        final snapshot = _snapshotForDay(entry.value, entry.key);
+        final status = snapshot.currentStatus;
+        final color = status != null
+            ? _statusColor(status)
+            : Colors.grey.shade500;
         return ListTile(
-          leading: Icon(
-            _statusIcon(day.status),
-            color: _statusColor(day.status),
-          ),
-          title: Text(_storageFormat.format(DateTime.parse(day.id))),
-          subtitle: Text(day.status ?? 'No status'),
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.brightness_1, color: color, size: 12),
+          title: Text(DateFormat('EEE, MMM d').format(entry.key)),
+          subtitle: Text(status != null ? _statusLabel(status) : 'No record'),
         );
       }).toList(),
     );
   }
 
-  Widget _buildWeeklyStreaks() {
-    // Find start of this week (Monday)
+  Widget _buildWeeklyStreaks(List<AttendanceRecord> records) {
     final now = DateTime.now();
     final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
 
-    // Generate Mon–Fri dates
-    final weekDays = List.generate(5, (i) {
-      final date = startOfWeek.add(Duration(days: i));
-      final dateId = DateFormat('yyyy-MM-dd').format(date);
-
-      // Match with attendance records
-      final match = _recentDays.firstWhere(
-        (d) => d.dateId == dateId,
-        orElse: () => AttendanceDay(id: dateId, dateId: dateId, status: null),
-      );
-
-      String emoji;
-      switch (match.status) {
-        case 'early':
-          emoji = '✅'; // on time
-          break;
-        case 'late':
-          emoji = '⏰'; // late
-          break;
-        case 'absent':
-          emoji = '🚫'; // absent
-          break;
-        default:
-          emoji = '⚪'; // no record
-      }
+    final days = List.generate(5, (index) {
+      final date = startOfWeek.add(Duration(days: index));
+      final snapshot = _snapshotForDay(records, date);
+      final status = snapshot.currentStatus;
 
       return {
-        'label': DateFormat('E').format(date), // Mon, Tue, ...
-        'emoji': emoji,
+        'label': DateFormat('EEE').format(date),
+        'emoji': status != null ? _statusEmoji(status) : '•',
+        'color': status != null ? _statusColor(status) : Colors.grey.shade500,
       };
     });
 
@@ -768,21 +664,24 @@ class _AttendancePageState extends State<AttendancePage>
       elevation: 4,
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: weekDays.map((day) {
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: days.map((day) {
             return Column(
               children: [
                 Text(
-                  day['label']!,
+                  day['label'] as String,
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(day['emoji']!, style: const TextStyle(fontSize: 22)),
+                Text(
+                  day['emoji'] as String,
+                  style: const TextStyle(fontSize: 24),
+                ),
               ],
             );
           }).toList(),
@@ -791,54 +690,113 @@ class _AttendancePageState extends State<AttendancePage>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Attendance'),
-        actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => AttendanceHistory()),
-              );
-            },
-            icon: Icon(Icons.refresh_outlined),
-          ),
-        ],
+  Widget _buildIncidentSection(List<GeofenceIncident> incidents) {
+    if (incidents.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_cardRadius),
       ),
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: StatusStrip(status: _today?.status)),
-            const SliverToBoxAdapter(child: SizedBox(height: 12)),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverToBoxAdapter(child: _buildOverviewSection()),
+      elevation: 4,
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Recent incidents',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _buildTodaySummary(),
-                  const SizedBox(height: 16),
-                  _buildHistorySection(),
-                  const SizedBox(height: 16),
-                  _buildWeeklyStreaks(),
-                  const SizedBox(height: 120),
-                ]),
+            const SizedBox(height: 12),
+            for (final incident in incidents) ...[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.report, color: Colors.red.shade400),
+                title: Text(
+                  '${incident.direction == AttendanceDirection.checkIn ? 'Check in' : 'Check out'} · ${DateFormat('MMM d, h:mm a').format(incident.occurredAt)}',
+                ),
+                subtitle: Text(
+                  '${incident.distanceLabel} away · ${incident.outsideMessageText ?? 'Outside designated zone'}',
+                ),
               ),
-            ),
+              if (incident != incidents.last) const Divider(),
+            ],
           ],
         ),
       ),
-      floatingActionButton: ClockFab(
-        isClockedIn: _isClockedIn,
-        onClockIn: _handleClockIn,
-        onClockOut: _handleClockOut,
-      ),
     );
   }
+
+  Duration? _computeDuration(DateTime? checkIn, DateTime? checkOut) {
+    final start = checkIn;
+    if (start == null) return null;
+    final end = checkOut ?? _now;
+    return end.difference(start);
+  }
+
+  String _formatTime(DateTime value) => DateFormat('h:mm a').format(value);
+
+  String _formatDuration(Duration duration) {
+    final abs = duration.isNegative ? duration.abs() : duration;
+    final hours = abs.inHours;
+    final minutes = abs.inMinutes.remainder(60);
+    return hours > 0
+        ? '${hours}h ${minutes.toString().padLeft(2, '0')}m'
+        : '${minutes}m';
+  }
+
+  String _statusLabel(distance_utils.AttStatus status) {
+    switch (status) {
+      case distance_utils.AttStatus.present:
+        return 'Present';
+      case distance_utils.AttStatus.late:
+        return 'Late arrival';
+      case distance_utils.AttStatus.outsideAttempt:
+        return 'Outside area';
+    }
+  }
+
+  String _statusEmoji(distance_utils.AttStatus status) {
+    switch (status) {
+      case distance_utils.AttStatus.present:
+        return '✅';
+      case distance_utils.AttStatus.late:
+        return '⏰';
+      case distance_utils.AttStatus.outsideAttempt:
+        return '📍';
+    }
+  }
+
+  Color _statusColor(distance_utils.AttStatus status) {
+    switch (status) {
+      case distance_utils.AttStatus.present:
+        return Colors.green.shade400;
+      case distance_utils.AttStatus.late:
+        return Colors.orange.shade400;
+      case distance_utils.AttStatus.outsideAttempt:
+        return Colors.red.shade400;
+    }
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+class DailySnapshot {
+  DailySnapshot({
+    required this.lastCheckIn,
+    required this.lastCheckOut,
+    required this.currentStatus,
+    required this.isClockedIn,
+    required this.records,
+  });
+
+  final AttendanceRecord? lastCheckIn;
+  final AttendanceRecord? lastCheckOut;
+  final distance_utils.AttStatus? currentStatus;
+  final bool isClockedIn;
+  final List<AttendanceRecord> records;
 }

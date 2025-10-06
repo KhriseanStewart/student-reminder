@@ -1,32 +1,32 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import 'package:students_reminder/src/widgets/late_reason_dialog.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 // data
 import 'package:students_reminder/src/models/app_user.dart';
+import 'package:students_reminder/src/models/attendance_record.dart';
 import 'package:students_reminder/src/services/provider.dart';
-import 'package:students_reminder/src/services/attendance_repository.dart';
-import 'package:students_reminder/src/services/location_service.dart';
+import 'package:students_reminder/src/features/checkin/check_in_controller.dart';
+import 'package:students_reminder/src/features/checkin/check_result_feedback.dart';
+import 'package:students_reminder/src/features/checkin/session_context.dart';
+import 'package:students_reminder/src/providers/incident_providers.dart';
 
 // widgets
 import 'package:students_reminder/src/widgets/student_card.dart';
 import 'package:students_reminder/src/features/home/widgets/quick_action.dart';
 import 'package:students_reminder/src/widgets/section_title.dart';
-import 'package:students_reminder/src/widgets/analytics_overview.dart';
 import 'package:students_reminder/src/widgets/empty_state.dart';
-import 'package:students_reminder/src/features/home/widgets/app_bar.dart';
-import 'package:students_reminder/src/features/profile/widgets/profile_card.dart';
 import 'package:students_reminder/src/features/home/widgets/clock_pill.dart';
-import 'package:students_reminder/src/widgets/late_reason_dialog.dart';
-import 'package:students_reminder/src/features/home/widgets/search_bar.dart';
+import 'package:students_reminder/src/widgets/analytics_overview.dart';
 
 // placeholder pages
 import 'package:students_reminder/src/features/courses/courses_page.dart';
 import 'package:students_reminder/src/features/assignments/assignments_page.dart';
 import 'package:students_reminder/src/features/grades/grades_page.dart';
 import 'package:students_reminder/src/features/calendar/calendar_page.dart';
-import 'package:students_reminder/src/features/settings/settings_page.dart'; // ✅ new
+
+import 'widgets/home_header.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   final AppUser user;
@@ -39,20 +39,8 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  late final TextEditingController _searchController;
+  final SearchController _searchController = SearchController();
   String _query = "";
-
-  @override
-  void initState() {
-    super.initState();
-    _searchController = TextEditingController();
-    _searchController.addListener(() {
-      final newQuery = _searchController.text;
-      if (newQuery != _query) {
-        setState(() => _query = newQuery);
-      }
-    });
-  }
 
   @override
   void dispose() {
@@ -60,11 +48,114 @@ class _HomePageState extends ConsumerState<HomePage> {
     super.dispose();
   }
 
+  Future<void> _handleCheck({
+    required bool isCheckIn,
+    required SessionContext session,
+  }) async {
+    final controller = ref.read(checkInControllerProvider.notifier);
+    final now = DateTime.now();
+
+    try {
+      // 👇 check lateness if clocking in
+      if (isCheckIn) {
+        final cutoff = session.scheduledStart.add(
+          Duration(minutes: session.graceMinutes),
+        );
+        final isLate = now.isAfter(cutoff);
+
+        if (isLate) {
+          final reason = await showLateReasonDialog(context);
+          if (reason == null || reason.trim().isEmpty) {
+            _showSnack('Clock-in cancelled (no reason provided).');
+            return;
+          }
+
+          // (Optional) Save to Firestore so it's in the attendance record
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          if (uid != null) {
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .collection('attendance_records')
+                .add({
+                  'timestamp': now,
+                  'status': 'late',
+                  'reason': reason,
+                  'classId': session.classId,
+                  'sessionId': session.sessionId,
+                });
+          }
+
+          _showSnack('Late reason saved: $reason');
+        }
+      }
+
+      // 👇 proceed with check-in/out as usual
+      final result = isCheckIn
+          ? await controller.checkIn(
+              sessionId: session.sessionId,
+              classId: session.classId,
+              scheduledStart: session.scheduledStart,
+              graceMinutes: session.graceMinutes,
+            )
+          : await controller.checkOut(
+              sessionId: session.sessionId,
+              classId: session.classId,
+              scheduledStart: session.scheduledStart,
+              graceMinutes: session.graceMinutes,
+            );
+
+      if (!mounted) return;
+      showCheckResultFeedback(context, result);
+    } on CheckInException catch (err) {
+      _showSnack(err.message);
+    } catch (_) {
+      _showSnack(
+        'Failed to ${isCheckIn ? 'clock in' : 'clock out'}. Please try again.',
+      );
+    }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      );
+  }
+
+  bool _isCurrentlyClockedIn(List<AttendanceRecord> records) {
+    final now = DateTime.now();
+    AttendanceRecord? lastIn;
+    AttendanceRecord? lastOut;
+
+    for (final record in records) {
+      if (!_isSameDay(record.checkedAt, now)) continue;
+      if (record.direction == AttendanceDirection.checkIn) {
+        if (lastIn == null || record.checkedAt.isAfter(lastIn.checkedAt)) {
+          lastIn = record;
+        }
+      } else {
+        if (lastOut == null || record.checkedAt.isAfter(lastOut.checkedAt)) {
+          lastOut = record;
+        }
+      }
+    }
+
+    if (lastIn == null) return false;
+    if (lastOut == null) return true;
+    return lastIn.checkedAt.isAfter(lastOut.checkedAt);
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(homeRepoProvider);
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    final attendanceRepo = AttendanceRepository();
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -79,7 +170,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
           if (snap.hasError) {
             return EmptyState(
-              message: "Failed to load students.\n${snap.error}",
+              message: "Failed to load students.\n\${snap.error}",
               action: TextButton(
                 onPressed: () => (context as Element).markNeedsBuild(),
                 child: const Text("Retry"),
@@ -98,15 +189,12 @@ class _HomePageState extends ConsumerState<HomePage> {
             (s) => s.uid == currentUid,
             orElse: () => students.first,
           );
-          final q = _query.toLowerCase();
-          final filtered = students.where((s) {
-            // Safely handle null values
-            final name = s.displayName.toLowerCase();
-            final group = s.courseGroup.toLowerCase();
-            final email = (s.email ?? "").toLowerCase(); // if AppUser has email
 
-            // ✅ match across multiple fields
-            return name.contains(q) || group.contains(q) || email.contains(q);
+          final filtered = students.where((s) {
+            final q = _query;
+            return s.displayName.toLowerCase().contains(q) ||
+                s.courseGroup.toLowerCase().contains(q) ||
+                s.email.toLowerCase().contains(q);
           }).toList();
 
           final grouped = <String, List<AppUser>>{};
@@ -114,227 +202,249 @@ class _HomePageState extends ConsumerState<HomePage> {
             grouped.putIfAbsent(s.courseGroup, () => []).add(s);
           }
 
-          return StreamBuilder<AttendanceDay?>(
-            stream: attendanceRepo.watchToday(),
-            builder: (context, attendanceSnap) {
-              final today = attendanceSnap.data;
-              final isClockedIn =
-                  today?.clockInAt != null && today?.clockOutAt == null;
+          if (_query.isNotEmpty && grouped.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  "No matching students.",
+                  style: TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+              ),
+            );
+          }
 
-              return CustomScrollView(
-                slivers: [
-                  const AppBarX(),
+          final session = ref.watch(sessionContextProvider);
+          final checkState = ref.watch(checkInControllerProvider);
 
-                  // 🔹 Profile Card (with gear icon)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: ProfileCard(
-                        name: currentUser.displayName,
-                        role: currentUser.courseGroup,
-                        photoUrl: currentUser.photoUrl,
-                        onTap: () =>
-                            widget.onTabChange?.call(3), // go profile tab
-                        onSettingsTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const SettingsPage(), // ✅
-                            ),
-                          );
-                        },
+          final attendanceHistory = currentUid != null
+              ? ref.watch(attendanceHistoryProvider(currentUid))
+              : const AsyncData<List<AttendanceRecord>>(<AttendanceRecord>[]);
+
+          var isClockedIn = false;
+          attendanceHistory.when(
+            data: (records) => isClockedIn = _isCurrentlyClockedIn(records),
+            error: (_, __) {},
+            loading: () {},
+          );
+
+          return CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: ClipPath(
+                  clipper: EdgeCurveClipper(),
+                  child: Container(
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
                     ),
-                  ),
-
-                  // 🔹 Search Bar
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SearchBarX(
-                        controller: _searchController,
-                        onChanged: (val) => setState(() => _query = val),
-                        onSearchTap: () {
-                          debugPrint("Manual search for $_query");
+                    padding: const EdgeInsets.only(top: 48, bottom: 24),
+                    child: HomeHeader(
+                      displayName: currentUser.displayName,
+                      photoUrl: currentUser.photoUrl ?? '',
+                      searchBar: SearchAnchor.bar(
+                        searchController: _searchController,
+                        barHintText: 'Search students...',
+                        barLeading: const SizedBox.shrink(),
+                        barTrailing: const [
+                          Icon(Icons.search, color: Colors.white70),
+                        ],
+                        onChanged: (val) {
+                          final text = val.trim().toLowerCase();
+                          if (_query != text) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                setState(() => _query = text);
+                              }
+                            });
+                          }
                         },
-                      ),
-                    ),
-                  ),
+                        suggestionsBuilder: (context, controller) {
+                          final query = controller.text.trim().toLowerCase();
+                          final suggestions = repo.latestStudents.where((s) {
+                            return s.displayName.toLowerCase().contains(
+                                  query,
+                                ) ||
+                                s.email.toLowerCase().contains(query) ||
+                                s.courseGroup.toLowerCase().contains(query);
+                          }).toList();
 
-                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-                  // Quick Actions row
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 60,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        children: [
-                          // ClockPill
-                          Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: ClockPill(
-                              isClockedIn: isClockedIn,
-                              onClockIn: () async {
-                                final now = DateTime.now();
-                                final pos = await LocationService()
-                                    .getCurrentPosition();
-
-                                String? lateReason;
-                                if (now.hour > 8 ||
-                                    (now.hour == 8 && now.minute > 30)) {
-                                  lateReason = await showLateReasonDialog(
-                                    context,
+                          return suggestions.map((s) {
+                            return Material(
+                              child: ListTile(
+                                title: Text(s.displayName),
+                                subtitle: Text(s.courseGroup),
+                                onTap: () {
+                                  controller.closeView(s.displayName);
+                                  setState(
+                                    () => _query = s.displayName.toLowerCase(),
                                   );
-                                  if (lateReason == null ||
-                                      lateReason.trim().isEmpty)
-                                    return;
-                                }
-
-                                await attendanceRepo.clockIn(
-                                  lat: pos.latitude,
-                                  lng: pos.longitude,
-                                  lateReason: lateReason,
-                                );
-
-                                if (!context.mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      "Clocked In ✅ (synced record)",
-                                    ),
-                                  ),
-                                );
-                              },
-                              onClockOut: () async {
-                                final pos = await LocationService()
-                                    .getCurrentPosition();
-                                await attendanceRepo.clockOut(
-                                  lat: pos.latitude,
-                                  lng: pos.longitude,
-                                );
-
-                                if (!context.mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text("Clocked Out ⏹"),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-
-                          QuickAction(
-                            icon: Icons.book,
-                            label: "Courses",
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const CoursesPage(),
+                                },
                               ),
-                            ),
-                            variant: QuickActionVariant.glass,
-                          ),
-                          QuickAction(
-                            icon: Icons.assignment,
-                            label: "Assignments",
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const AssignmentsPage(),
-                              ),
-                            ),
-                            variant: QuickActionVariant.glass,
-                          ),
-                          QuickAction(
-                            icon: Icons.bar_chart,
-                            label: "Grades",
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const GradesPages(),
-                              ),
-                            ),
-                            variant: QuickActionVariant.glass,
-                          ),
-                          QuickAction(
-                            icon: Icons.calendar_today,
-                            label: "Calendar",
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const CalendarPage(),
-                              ),
-                            ),
-                            variant: QuickActionVariant.glass,
-                          ),
-                        ],
+                            );
+                          }).toList();
+                        },
                       ),
-                    ),
-                  ),
-
-                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-                  // Analytics Overview
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          SectionTitle(title: "Analytics Overview"),
-                          SizedBox(height: 12),
-                          AnalyticsOverview(),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-                  // Students Section
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SectionTitle(title: "Students"),
-                          const SizedBox(height: 12),
-                          for (final entry in grouped.entries) ...[
+                      quickActions: SizedBox(
+                        height: 60,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          children: [
                             Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: Text(
-                                entry.key.toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.deepPurpleAccent,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
+                              padding: const EdgeInsets.only(right: 12),
+                              child: ClockPill(
+                                isClockedIn: isClockedIn,
+                                isLoading: checkState.isLoading,
+                                onClockIn: () => _handleCheck(
+                                  isCheckIn: true,
+                                  session: session,
+                                ),
+                                onClockOut: () => _handleCheck(
+                                  isCheckIn: false,
+                                  session: session,
                                 ),
                               ),
                             ),
-                            ...entry.value.map(
-                              (u) => Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: StudentCard(
-                                  student: u,
-                                  onTap: () =>
-                                      debugPrint("Tapped ${u.displayName}"),
+                            QuickAction(
+                              icon: Icons.book,
+                              label: 'Courses',
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const CoursesPage(),
                                 ),
                               ),
+                              variant: QuickActionVariant.glass,
+                            ),
+                            QuickAction(
+                              icon: Icons.assignment,
+                              label: 'Assignments',
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const AssignmentsPage(),
+                                ),
+                              ),
+                              variant: QuickActionVariant.glass,
+                            ),
+                            QuickAction(
+                              icon: Icons.bar_chart,
+                              label: 'Grades',
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const GradesPages(),
+                                ),
+                              ),
+                              variant: QuickActionVariant.glass,
+                            ),
+                            QuickAction(
+                              icon: Icons.calendar_today,
+                              label: 'Calendar',
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const CalendarPage(),
+                                ),
+                              ),
+                              variant: QuickActionVariant.glass,
                             ),
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
-                ],
-              );
-            },
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Card(
+                    color: const Color(0xFF242424),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    elevation: 10,
+                    shadowColor: Colors.black45,
+                    child: const AnalyticsOverview(),
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionTitle(title: 'Students'),
+                      const SizedBox(height: 12),
+                      for (final entry in grouped.entries) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Text(
+                            entry.key.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.deepPurpleAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        ...entry.value.map(
+                          (u) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: StudentCard(
+                              student: u,
+                              onTap: () =>
+                                  debugPrint('Tapped \${u.displayName}'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
     );
   }
+}
+
+class EdgeCurveClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    final radius = 40.0;
+
+    path.moveTo(0, radius);
+    path.quadraticBezierTo(0, 0, radius, 0);
+    path.lineTo(size.width - radius, 0);
+    path.quadraticBezierTo(size.width, 0, size.width, radius);
+    path.lineTo(size.width, size.height - radius);
+    path.quadraticBezierTo(
+      size.width,
+      size.height,
+      size.width - radius,
+      size.height,
+    );
+    path.lineTo(radius, size.height);
+    path.quadraticBezierTo(0, size.height, 0, size.height - radius);
+    path.close();
+
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }

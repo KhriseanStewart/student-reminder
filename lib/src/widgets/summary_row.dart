@@ -26,9 +26,9 @@ class SummaryRow extends StatelessWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: numberColor.withOpacity(0.1),
+                color: numberColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: numberColor.withOpacity(0.3)),
+                border: Border.all(color: numberColor.withValues(alpha: 0.3)),
               ),
               child: Text(
                 count.toString().padLeft(2, '0'),
@@ -68,7 +68,12 @@ class SummaryRow extends StatelessWidget {
           numberColor: Colors.green.shade300,
         ),
         summaryCard(
-          label: "Absent",
+          label: 'Late',
+          count: late,
+          numberColor: Colors.orange.shade300,
+        ),
+        summaryCard(
+          label: 'Absent',
           count: absent,
           numberColor: Colors.red.shade300,
         ),

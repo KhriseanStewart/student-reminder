@@ -31,7 +31,7 @@ class ProfileActionTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.deepPurple.withOpacity(0.2),
+                color: Colors.deepPurple.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: Colors.deepPurpleAccent, size: 20),

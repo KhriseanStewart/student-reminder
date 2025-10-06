@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui'; // 👈 for BackdropFilter
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -13,9 +12,9 @@ class MapStatus {
 
   const MapStatus.loading() : this._(MapLoadState.loading);
   const MapStatus.ready(Position position)
-    : this._(MapLoadState.ready, position: position);
+      : this._(MapLoadState.ready, position: position);
   const MapStatus.error(String message)
-    : this._(MapLoadState.error, error: message);
+      : this._(MapLoadState.error, error: message);
 
   final MapLoadState state;
   final Position? position;
@@ -110,7 +109,6 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
 
       if (_mapController != null) {
         _mapController!.animateCamera(
-          duration: Duration(milliseconds: 300),
           CameraUpdate.newLatLngZoom(
             LatLng(position.latitude, position.longitude),
             15,
@@ -165,95 +163,50 @@ class _MapCardState extends State<MapCard> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: GoogleMap(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Stack(
+        children: [
+          GoogleMap(
             onMapCreated: _onMapCreated,
             initialCameraPosition: widget.fixedPosition != null
                 ? CameraPosition(target: widget.fixedPosition!, zoom: 15)
-                : CameraPosition(
-                    target: LatLng(
-                      _currentPosition?.latitude ?? 0,
-                      _currentPosition?.longitude ?? 0,
-                    ),
-                    zoom: 15.0,
-                  ),
+                : _defaultPosition,
             markers: _markers,
-            myLocationEnabled: true,
+            myLocationEnabled: widget.fixedPosition == null,
             myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            compassEnabled: false,
             liteModeEnabled: true,
           ),
-        ),
 
-        // 👇 Tap → open full screen map
-        Positioned.fill(
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const FullMapScreen()),
-                );
-              },
+          // Tap → open full screen map
+          Positioned.fill(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const FullMapScreen(),
+                    ),
+                  );
+                },
+              ),
             ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
           ),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: GoogleMap(
-                  onMapCreated: _onMapCreated,
-                  initialCameraPosition: widget.fixedPosition != null
-                      ? CameraPosition(target: widget.fixedPosition!, zoom: 15)
-                      : _currentPosition != null
-                      ? CameraPosition(
-                          target: LatLng(
-                            _currentPosition!.latitude,
-                            _currentPosition!.longitude,
-                          ),
-                          zoom: 15.0,
-                        )
-                      : _defaultPosition,
-                  markers: _markers,
-                  myLocationEnabled: widget.fixedPosition == null,
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: false,
-                  compassEnabled: false,
-                  liteModeEnabled: true,
-                ),
+
+          if (_isLoading) const Center(child: CircularProgressIndicator()),
+
+          if (_errorMessage != null && !_isLoading)
+            Center(
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.red),
               ),
-
-              // Tap → open full map
-              Positioned.fill(
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const FullMapScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-
-              if (_isLoading) const Center(child: CircularProgressIndicator()),
-
-              if (_errorMessage != null && !_isLoading)
-                Center(
-                  child: Text(
-                    _errorMessage!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }

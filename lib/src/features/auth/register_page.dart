@@ -32,7 +32,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
     setState(() => _busy = true);
     try {
-      final user = await AuthService.instance.register(
+      await AuthService.instance.register(
         firstName: _first.text.trim(),
         lastName: _last.text.trim(),
         courseGroup: _group,
@@ -43,6 +43,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
       if (mounted) Navigator.pushReplacementNamed(context, AppRoutes.main);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Registration failed: $e')));
@@ -66,7 +67,7 @@ class _RegisterPageState extends State<RegisterPage> {
             image: AssetImage("assets/images/computer_bg.png"),
             fit: BoxFit.cover,
             colorFilter: ColorFilter.mode(
-              Colors.black.withOpacity(0.5),
+              Colors.black.withValues(alpha: 0.5),
               BlendMode.darken,
             ),
           ),
@@ -79,7 +80,12 @@ class _RegisterPageState extends State<RegisterPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              color: const Color.fromARGB(255, 28, 3, 66).withOpacity(0.9),
+              color: const Color.fromARGB(
+                255,
+                28,
+                3,
+                66,
+              ).withValues(alpha: 0.9),
               child: Padding(
                 padding: EdgeInsets.all(20),
                 child: Column(
@@ -205,7 +211,7 @@ class _RegisterPageState extends State<RegisterPage> {
           fontWeight: FontWeight.w500,
         ),
         filled: true,
-        fillColor: Colors.white.withOpacity(0.9),
+        fillColor: Colors.white.withValues(alpha: 0.9),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

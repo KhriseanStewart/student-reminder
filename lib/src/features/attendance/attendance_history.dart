@@ -96,8 +96,9 @@ class _AttendanceHistoryState extends State<AttendanceHistory> {
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: events.take(3).map((event) {
-                      if (event is! Map<String, dynamic>)
+                      if (event is! Map<String, dynamic>) {
                         return const SizedBox();
+                      }
                       final status = (event['status'] ?? '').toLowerCase();
                       final markerColor = getStatusColor(status);
                       return Container(

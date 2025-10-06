@@ -7,6 +7,7 @@ class TimelineItem extends StatelessWidget {
   final String? reason;
   final LatLng? mapLatLng;
   final Color pillColor;
+  final bool showMap;
 
   const TimelineItem({
     super.key,
@@ -17,6 +18,7 @@ class TimelineItem extends StatelessWidget {
     this.reason,
     this.mapLatLng,
     required this.pillColor,
+   this.showMap = false,
   });
 
   @override
@@ -49,9 +51,9 @@ class TimelineItem extends StatelessWidget {
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: pillColor.withOpacity(0.12),
+                  color: pillColor.withValues(alpha:0.12),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: pillColor.withOpacity(0.6)),
+                  border: Border.all(color: pillColor.withValues(alpha:0.6)),
                 ),
                 child: Text(
                   status.toUpperCase(),
@@ -101,7 +103,7 @@ class TimelineItem extends StatelessWidget {
             ),
           ],
           // Map Preview
-          if (mapLatLng != null) ...[
+        if (showMap && mapLatLng != null) ...[
             const SizedBox(height: 12),
             ClipRRect(
               borderRadius: BorderRadius.circular(12),

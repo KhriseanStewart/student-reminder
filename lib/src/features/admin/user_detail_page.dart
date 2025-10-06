@@ -288,6 +288,7 @@ class _UserDetailPageState extends State<UserDetailPage> {
                       ? LatLng(lat, lng)
                       : null,
                   pillColor: _statusColor(status),
+                  showMap: true, // ✅ Only enable here!
                 );
               }),
             ],

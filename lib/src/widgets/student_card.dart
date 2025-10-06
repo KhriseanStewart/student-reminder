@@ -20,7 +20,7 @@ class StudentCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0, // 🔹 Flat Material 3 look
-      color: cs.surfaceVariant.withOpacity(0.2),
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.2),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -32,7 +32,7 @@ class StudentCard extends StatelessWidget {
               // 👤 Avatar (circle, with photo or fallback letter)
               CircleAvatar(
                 radius: 26,
-                backgroundColor: cs.primary.withOpacity(0.8),
+                backgroundColor: cs.primary.withValues(alpha: 0.8),
                 backgroundImage:
                     student.photoUrl != null && student.photoUrl!.isNotEmpty
                     ? NetworkImage(student.photoUrl!)

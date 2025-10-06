@@ -7,9 +7,12 @@ class StatusStrip extends StatelessWidget {
   String _statusEmoji(String? s) {
     switch (s) {
       case 'early':
+      case 'present':
         return '✅';
       case 'late':
         return '⏰';
+      case 'outsideAttempt':
+        return '📍';
       case 'absent':
         return '🚫';
       default:
@@ -20,9 +23,12 @@ class StatusStrip extends StatelessWidget {
   String _statusMessage(String? s) {
     switch (s) {
       case 'early':
+      case 'present':
         return 'You’re on time!';
       case 'late':
         return 'Running late today.';
+      case 'outsideAttempt':
+        return 'Outside designated area.';
       case 'absent':
         return 'Absent today.';
       default:

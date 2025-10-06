@@ -4,15 +4,15 @@ class AppUser {
   final String uid;
   final String firstName;
   final String lastName;
-  final String courseGroup; // e.g. "web" | "mobile"
+  final String courseGroup;
   final String email;
   final String phone;
-  final String role; // 🔑 "student" | "admin"
+  final String role; // "student" | "admin"
   final String? gender;
   final String? bio;
   final String? photoUrl;
   final DateTime? createdAt;
-  final Map<String, dynamic>? attendance; // ✅ NEW: stats
+  final AttendanceStats attendance;
 
   AppUser({
     required this.uid,
@@ -26,13 +26,12 @@ class AppUser {
     this.bio,
     this.photoUrl,
     this.createdAt,
-    this.attendance,
+    this.attendance = const AttendanceStats(),
   });
 
   factory AppUser.fromMap(String uid, Map<String, dynamic> data) {
     final createdAtRaw = data['createdAt'];
     DateTime? createdAt;
-
     if (createdAtRaw is Timestamp) {
       createdAt = createdAtRaw.toDate();
     } else if (createdAtRaw is DateTime) {
@@ -51,7 +50,7 @@ class AppUser {
       bio: data['bio']?.toString(),
       photoUrl: data['photoUrl']?.toString(),
       createdAt: createdAt,
-      attendance: data['attendance'] as Map<String, dynamic>?, // ✅ safe cast
+      attendance: AttendanceStats.fromMap(data['attendance'] as Map<String, dynamic>?),
     );
   }
 
@@ -67,7 +66,7 @@ class AppUser {
       'photoUrl': photoUrl,
       'role': role,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
-      'attendance': attendance,
+      'attendance': attendance.toMap(),
     };
   }
 
@@ -79,4 +78,31 @@ class AppUser {
   }
 
   bool get isAdmin => role.toLowerCase() == "admin";
+}
+
+class AttendanceStats {
+  final int present;
+  final int late;
+  final int absent;
+
+  const AttendanceStats({
+    this.present = 0,
+    this.late = 0,
+    this.absent = 0,
+  });
+
+  factory AttendanceStats.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const AttendanceStats();
+    return AttendanceStats(
+      present: (map['present'] ?? 0) as int,
+      late: (map['late'] ?? 0) as int,
+      absent: (map['absent'] ?? 0) as int,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'present': present,
+        'late': late,
+        'absent': absent,
+      };
 }

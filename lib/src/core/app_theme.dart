@@ -15,7 +15,7 @@ ThemeData buildTheme() {
     textTheme: AppTypography.textTheme,
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: colorScheme.surface.withAlpha(5),
+      fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.05),
       floatingLabelBehavior: FloatingLabelBehavior.auto,
       prefixIconColor: colorScheme.primary,
       prefixStyle: TextStyle(color: colorScheme.primary),
@@ -41,10 +41,10 @@ ThemeData buildDarkTheme() {
     useMaterial3: true,
     brightness: Brightness.dark,
     colorScheme: colorScheme,
-    textTheme: AppTypography.textTheme.apply(bodyColor: AppColors.white),
+    textTheme: AppTypography.textTheme,
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: colorScheme.surface.withValues(alpha: 0.05),
+      fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.05),
       floatingLabelBehavior: FloatingLabelBehavior.auto,
       prefixIconColor: colorScheme.primary,
       prefixStyle: TextStyle(color: colorScheme.primary),

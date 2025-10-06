@@ -2,8 +2,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AttendanceDay {
-  final String date;              // "YYYY-MM-DD"
-  final String status;            // 'early' | 'late' | 'present' | 'absent'
+  final String date; // "YYYY-MM-DD"
+  final String status; // 'early' | 'late' | 'present' | 'absent'
   final DateTime? clockInAt;
   final DateTime? clockOutAt;
   final double? clockInLat;
@@ -24,6 +24,31 @@ class AttendanceDay {
     this.lateReason,
   });
 
+  // 🔹 copyWith method
+  AttendanceDay copyWith({
+    String? date,
+    String? status,
+    DateTime? clockInAt,
+    DateTime? clockOutAt,
+    double? clockInLat,
+    double? clockInLng,
+    double? clockOutLat,
+    double? clockOutLng,
+    String? lateReason,
+  }) {
+    return AttendanceDay(
+      date: date ?? this.date,
+      status: status ?? this.status,
+      clockInAt: clockInAt ?? this.clockInAt,
+      clockOutAt: clockOutAt ?? this.clockOutAt,
+      clockInLat: clockInLat ?? this.clockInLat,
+      clockInLng: clockInLng ?? this.clockInLng,
+      clockOutLat: clockOutLat ?? this.clockOutLat,
+      clockOutLng: clockOutLng ?? this.clockOutLng,
+      lateReason: lateReason ?? this.lateReason,
+    );
+  }
+
   /// Convert Firestore Timestamp/DateTime to DateTime?
   static DateTime? _toDateTime(dynamic v) {
     if (v == null) return null;
@@ -32,12 +57,10 @@ class AttendanceDay {
     return null;
   }
 
-  factory AttendanceDay.fromDoc(
-    DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
+  factory AttendanceDay.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? <String, dynamic>{};
     return AttendanceDay(
-      date: (d['date'] as String?) ?? '',
+      date: ((d['date'] as String?) ?? '').trim(),
       status: (d['status'] as String?) ?? 'absent',
       clockInAt: _toDateTime(d['clockInAt']),
       clockOutAt: _toDateTime(d['clockOutAt']),

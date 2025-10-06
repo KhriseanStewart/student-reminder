@@ -23,7 +23,7 @@ class QuickAction extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
 
     // Default values
-    Color bgColor = scheme.surfaceVariant;
+    Color bgColor = scheme.surfaceContainerHighest;
     Color borderColor = Colors.transparent;
     Color textColor = scheme.onSurface;
     Color iconColor = scheme.onSurface;
@@ -36,7 +36,7 @@ class QuickAction extends StatelessWidget {
         iconColor = scheme.onPrimary;
         shadows = [
           BoxShadow(
-            color: scheme.primary.withOpacity(0.3),
+            color: scheme.primary.withValues(alpha: 0.3),
             blurRadius: 6,
             offset: const Offset(0, 3),
           ),
@@ -45,7 +45,7 @@ class QuickAction extends StatelessWidget {
 
       case QuickActionVariant.outlined:
         bgColor = Colors.transparent;
-        borderColor = scheme.primary.withOpacity(0.6);
+        borderColor = scheme.primary.withValues(alpha: 0.6);
         textColor = scheme.primary;
         iconColor = scheme.primary;
         break;
@@ -57,15 +57,15 @@ class QuickAction extends StatelessWidget {
         break;
 
       case QuickActionVariant.disabled:
-        bgColor = scheme.surfaceVariant.withOpacity(0.4);
-        textColor = scheme.onSurface.withOpacity(0.4);
-        iconColor = scheme.onSurface.withOpacity(0.4);
+        bgColor = scheme.surfaceContainerHighest.withValues(alpha: 0.4);
+        textColor = scheme.onSurface.withValues(alpha: 0.4);
+        iconColor = scheme.onSurface.withValues(alpha: 0.4);
         break;
 
       case QuickActionVariant.glass:
         // Transparent glass pill
-        bgColor = Colors.white.withOpacity(0.12);
-        borderColor = Colors.white.withOpacity(0.24);
+        bgColor = Colors.white.withValues(alpha: 0.12);
+        borderColor = Colors.white.withValues(alpha: 0.24);
         textColor = Colors.white;
         iconColor = Colors.white;
         break;

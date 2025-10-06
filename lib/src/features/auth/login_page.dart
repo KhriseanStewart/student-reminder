@@ -16,6 +16,14 @@ class _LoginPageState extends State<LoginPage> {
   final _password = TextEditingController();
   bool _obscure = true;
   bool _busy = false;
+  String? _errorMessage; // ✅ holds errors / reset messages
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
 
   Future<void> _login() async {
     setState(() => _busy = true);
@@ -24,6 +32,7 @@ class _LoginPageState extends State<LoginPage> {
       await navigateAfterLogin();
     } catch (e) {
       if (mounted) {
+        setState(() => _errorMessage = "Login Failed: $e");
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Login Failed: $e')));
@@ -35,7 +44,6 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> navigateAfterLogin() async {
     final user = AuthService.instance.currentUser;
-
     if (user == null) return;
 
     try {
@@ -45,22 +53,24 @@ class _LoginPageState extends State<LoginPage> {
           .get();
 
       final role = snap.data()?['role'] as String?;
-      print('Fetched role: $role');
+      debugPrint('Fetched role: $role');
+
+      if (!mounted) return;
 
       if (role == 'admin') {
         Navigator.pushReplacementNamed(context, AppRoutes.admin);
-        return;
       } else {
         Navigator.pushReplacementNamed(context, AppRoutes.main);
       }
     } catch (e) {
-      print('Error fetching role: $e');
+      debugPrint('Error fetching role: $e');
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, AppRoutes.main);
     }
   }
 
   Future<void> _resetPassword() async {
-    final email = _emailController.text.trim();
+    final email = _email.text.trim();
     if (email.isEmpty) {
       setState(() => _errorMessage = "Enter your email to reset password.");
       return;
@@ -80,14 +90,13 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.center,
             colors: [Colors.blue, Colors.black],
           ),
         ),
-
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Center(
@@ -95,12 +104,13 @@ class _LoginPageState extends State<LoginPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    height: 400,
-                    width: 400,
+                  SizedBox(
+                    height: 250,
+                    width: 250,
                     child: Lottie.asset('assets/Student.json'),
                   ),
-                  Text(
+                  const SizedBox(height: 20),
+                  const Text(
                     'Student Reminder',
                     style: TextStyle(
                       fontSize: 32,
@@ -117,9 +127,10 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 20),
 
+                  // Email
                   TextField(
                     controller: _email,
-                    style: TextStyle(color: Colors.white),
+                    style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Email',
                       labelStyle: TextStyle(color: Colors.white),
@@ -130,7 +141,6 @@ class _LoginPageState extends State<LoginPage> {
                       focusedBorder: OutlineInputBorder(
                         borderSide: BorderSide(color: Colors.grey, width: 2),
                       ),
-
                       fillColor: Colors.transparent,
                       border: OutlineInputBorder(),
                       filled: true,
@@ -142,42 +152,66 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 12),
 
+                  // Password
                   TextField(
                     controller: _password,
                     obscureText: _obscure,
-                    style: TextStyle(color: Colors.white),
+                    style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      prefixIcon: Icon(Icons.lock, color: Colors.blueGrey),
+                      prefixIcon: const Icon(
+                        Icons.lock,
+                        color: Colors.blueGrey,
+                      ),
                       fillColor: Colors.transparent,
                       labelText: 'Password',
-                      labelStyle: TextStyle(color: Colors.white),
-                      floatingLabelStyle: TextStyle(color: Colors.blue),
-                      focusedBorder: OutlineInputBorder(
+                      labelStyle: const TextStyle(color: Colors.white),
+                      floatingLabelStyle: const TextStyle(color: Colors.blue),
+                      focusedBorder: const OutlineInputBorder(
                         borderSide: BorderSide(color: Colors.grey, width: 2),
                       ),
-                      enabledBorder: OutlineInputBorder(
+                      enabledBorder: const OutlineInputBorder(
                         borderSide: BorderSide(color: Colors.grey),
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          color: Colors.lime,
                           _obscure ? Icons.visibility_off : Icons.visibility,
+                          color: Colors.lime,
                         ),
                         onPressed: () {
-                          setState(() {
-                            _obscure = !_obscure;
-                          });
+                          setState(() => _obscure = !_obscure);
                         },
                       ),
                     ),
                   ),
 
+                  // Error Message
+                  if (_errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(
+                        _errorMessage!,
+                        style: const TextStyle(color: Colors.red, fontSize: 14),
+                      ),
+                    ),
+
+                  const SizedBox(height: 10),
+
+                  // Forgot Password
+                  TextButton(
+                    onPressed: _resetPassword,
+                    child: const Text(
+                      "Forgot Password?",
+                      style: TextStyle(color: Colors.blueAccent),
+                    ),
+                  ),
+
                   const SizedBox(height: 20),
 
+                  // Login Button
                   Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      gradient: LinearGradient(
+                      gradient: const LinearGradient(
                         colors: [Colors.blue, Colors.purple],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
@@ -186,7 +220,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: ElevatedButton(
                       onPressed: _busy ? null : _login,
                       style: ElevatedButton.styleFrom(
-                        minimumSize: Size(300, 50),
+                        minimumSize: const Size(300, 50),
                         backgroundColor: Colors.transparent,
                         elevation: 5,
                       ),
@@ -203,6 +237,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 12),
 
+                  // Register
                   OutlinedButton(
                     onPressed: () =>
                         Navigator.pushNamed(context, AppRoutes.register),
